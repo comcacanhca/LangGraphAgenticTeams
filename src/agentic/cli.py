@@ -272,7 +272,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print("\n→ Chưa thể chạy. Sửa các [FAIL] rồi chạy lại.")
         return 1
 
-    print("\n→ Môi trường sẵn sàng cho GĐ1.")
+    print("\n→ Môi trường sẵn sàng cho bước tiếp theo.")
     return 0
 
 
