@@ -1,4 +1,4 @@
-"""Giám sát VRAM: chỉ nạp được MỘT model trên RTX 3060 12GB.
+﻿"""Giám sát VRAM: chỉ nạp được MỘT model trên RTX 3060 12GB.
 
 Vì sao cần module này:
   Tổng 12,288 MiB − Windows/Chrome/dwm (~1,200) − mức dự phòng
@@ -112,12 +112,15 @@ class VramGovernor:
     def __init__(self, reserve_mb: int, single_model_only: bool = True) -> None:
         self.reserve_mb = reserve_mb
         self.single_model_only = single_model_only
+        # Nếu profile khai báo vram_estimate_mb thì dùng con số đó thay
+        # vì cột SIZE của `ollama list` KHÔNG tính KV cache — mà KV cache
+        # mới là phần quyết định với model nặng như gemma4:12b.
+        self.explicit_mb: int | None = None
 
     def can_load(self, model_name: str, ctx: int = 0) -> tuple[bool, str]:
         """Có nạp được model này không? Trả về (ok, lý do).
 
         ctx là số token context — context càng lớn, KV cache càng nặng.
-        Mỗi 8k token context ước tính thêm ~250MB cho model 7B.
         """
         gpu = read_gpu()
         if gpu is None:
@@ -125,13 +128,33 @@ class VramGovernor:
             # và việc chặn sẽ khiến hệ thống không chạy được ở đâu đó.
             return True, "Không đọc được VRAM, bỏ qua kiểm tra."
 
-        needed = estimate_model_mb(model_name)
+        # ═══ Model ĐANG NẠP thì không cần thêm VRAM ═══
+        # Đây là chỗ dễ sai nhất: sau lượt gọi đầu tiên, model đã nằm
+        # trong VRAM, nên `free_mb` sẽ thấp MÀI model đó chiếm. Nếu kiểm
+        # VRAM như lần đầu thì mọi lượt gọi thứ hai trở đi đều bị chặn
+        # oan, dù máy hoàn toàn ổn.
+        #
+        # Đã thử nghiệm: Ollama BÁO kích thước nhỏ hơn VRAM thật (cột
+        # SIZE của `ollama ps` là dung lượng weight, không gồm KV cache),
+        # nên KHÔNG dùng ngưỡng MB để quyết định "đã nạp" hay chưa. Chỉ
+        # cần model CÓ TÊN trong `ollama ps` là đủ để coi là nạp rồi —
+        # Ollama tự nạp phần còn lại khi có request.
+        loaded = self._loaded_names()
+        # So KHỚP HOÀN CHỈNH tên model, không so tên rút gọn. `ollama ps`
+        # in tên đầy đủ ("gemma4:12b"), nên tách ở dấu ":" rồi so sánh
+        # "gemma4" với "gemma4:12b" sẽ KHÔNG BAO GIỜ khớp — lỗi này khiến
+        # mọi lượt gọi sau lượt đầu bị chặn oan.
+        if model_name in loaded:
+            return True, f"'{model_name}' đã nằm trong VRAM, không cần nạp lại."
+
+        needed = self.explicit_mb or estimate_model_mb(model_name)
         if needed == 0:
             return True, "Không ước lượng được kích thước model, bỏ qua."
 
-        # KV cache tăng theo context. Số này là ước lượng cho model ~7B;
-        # sai một chút không sao vì đang so với ngưỡng dự phòng.
-        needed += (ctx // 8192) * 250
+        # Chỉ cộng thêm KV cache khi dùng con số ước lượng từ ollama list
+        # (con số đó đã là dung lượng model, chưa gồm KV cache).
+        if not self.explicit_mb:
+            needed += (ctx // 8192) * 250
 
         free_for_model = gpu.free_mb - self.reserve_mb
 
@@ -143,15 +166,14 @@ class VramGovernor:
                 f"        Tắt Chrome/TeamViewer sẽ thêm khoảng 3GB.",
             )
 
-        if self.single_model_only:
-            loaded = self._loaded_models()
-            if len(loaded) > 1:
-                names = ", ".join(loaded)
-                return (
-                    False,
-                    f"single_model_only=true nhưng đang có {len(loaded)} model "
-                    f"nạp: {names}.\n        Dùng 'ollama stop <model>' để giải phóng.",
-                )
+        if self.single_model_only and len(loaded) > 1:
+            # Nhiều model cùng nằm trong VRAM sẽ tranh chấp và OOM.
+            names = ", ".join(loaded)
+            return (
+                False,
+                f"single_model_only=true nhưng đang có {len(loaded)} model "
+                f"nạp: {names}.\n        Dùy 'ollama stop <model>' để giải phóng.",
+            )
 
         return (
             True,
@@ -159,12 +181,25 @@ class VramGovernor:
             f"(dự phòng {self.reserve_mb}MB).",
         )
 
+
     @staticmethod
-    def _loaded_models() -> list[str]:
-        """Danh sách model đang nằm trong VRAM (qua `ollama ps`)."""
+    def _loaded_names() -> list[str]:
+        """Tên các model đang nằm trong VRAM (qua `ollama ps`).
+
+        CHỈ CẦN TÊN, không cần kiểm kích thước. Đã thử nghiệm: cột SIZE
+        của `ollama ps` là dung lượng weight, KHÔNG gồm KV cache, nên nó
+        luôn nhỏ hơn VRAM model thật sự chiếm. Dùng SIZE để quyết định
+        "đã nạp chưa" sẽ gây ra hai lỗi ngược nhau:
+          - cho qua quá sớm → Ollama tự nạp, vẫn chạy được (vô hại)
+          - chặn quá mức → mọi lượt gọi sau lượt đầu đều bị từ chối oan
+
+        Ollama tự lo phần nạp còn lại khi nhận request, nên chỉ cần biết
+        model đã có mặt trong bảng là được.
+        """
         exe = shutil.which("ollama")
         if not exe:
             return []
+
         try:
             out = subprocess.run(
                 ["ollama", "ps"], capture_output=True, text=True, timeout=15
@@ -172,5 +207,11 @@ class VramGovernor:
         except (OSError, subprocess.SubprocessError):
             return []
 
-        lines = (out.stdout or "").strip().splitlines()[1:]
-        return [ln.split()[0] for ln in lines if ln.split()]
+        return [
+            cols[0]
+            for cols in (line.split() for line in
+                         (out.stdout or "").strip().splitlines()[1:])
+            if cols
+        ]
+
+

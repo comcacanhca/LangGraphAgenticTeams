@@ -69,7 +69,7 @@ class LlmClient:
         """Dựng client từ agents.yaml (đã resolve qua Config.model)."""
         model_cfg = cfg.model
         llm_cfg = cfg.llm
-        return cls(
+        client = cls(
             base_url=model_cfg.get("base_url", "http://localhost:11434"),
             model=model_cfg["name"],
             num_ctx=model_cfg["num_ctx"],
@@ -84,6 +84,12 @@ class LlmClient:
                 single_model_only=cfg.gpu.get("single_model_only", True),
             ),
         )
+        # Profile có thể ghi đè ngưỡng dự phòng: model nặng (gemma4:12b)
+        # cần dự phòng nhỏ hơn vì máy không còn nhiều dung lượng.
+        override = model_cfg.get("vram_estimate_mb")
+        if override and client.governor is not None:
+            client.governor.explicit_mb = int(override)
+        return client
 
     # ── gọi thô ───────────────────────────────────────────────────────────
 

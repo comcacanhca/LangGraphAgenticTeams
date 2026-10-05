@@ -13,6 +13,12 @@ from typing import Any
 
 import yaml
 
+from agentic.encoding import force_utf8
+
+# Ép UTF-8 ngay khi import: config.py in cảnh báo tiếng Việt, và nếu
+# console là cp1252 thì việc in sẽ ném UnicodeEncodeError.
+force_utf8()
+
 # Thư mục gốc của hệ thống (nơi chứa agents.yaml)
 ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_FILE = ROOT / "agents.yaml"

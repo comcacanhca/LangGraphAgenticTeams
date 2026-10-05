@@ -189,28 +189,42 @@ def compare(old_path: Path, new_path: Path) -> str:
     old = json.loads(old_path.read_text(encoding="utf-8"))
     new = json.loads(new_path.read_text(encoding="utf-8"))
 
-    def line(label: str, key: str, fmt: str = "{:.0%}") -> str:
-        delta = ""
-        if isinstance(old.get(key), (int, float)):
-            diff = new[key] - old[key]
-            # first_try_rate tăng là tốt, avg_attempts tăng là xấu.
-            good = diff > 0 if key == "first_try_rate" else diff < 0
-            arrow = "▲" if diff > 0 else ("▼" if diff < 0 else "=")
-            color = "" if not diff else ("  tốt" if good else "  xấu")
-            delta = f"   {arrow} {diff:+.2f}{color}"
-        return f"  {label:<24} {fmt.format(old.get(key, 0)):>8} → "
-        + f"{fmt.format(new.get(key, 0)):>8}{delta}"
+    # (nhãn, khoá, định dạng, hướng tốt) — "hướng tốt" cho biết tăng hay
+    # giảm mới là cải thiện, để gắn mũi tên ▲/▼ đúng nghĩa.
+    metrics = [
+        ("JSON hợp lệ lần đầu", "first_try_rate", "{:.0%}", 1),
+        ("Thành công cuối cùng", "success_rate", "{:.0%}", 1),
+        ("Retry trung bình", "avg_attempts", "{:.2f}", -1),
+        ("Thời gian/câu (giây)", "avg_seconds", "{:.1f}", -1),
+    ]
 
-    return "\n".join([
+    lines = [
         "",
         "SO SÁNH ĐỘ TIN CẬY",
-        "=" * 58,
+        "=" * 62,
         f"  cũ: {old['model']} ({old['measured_at']})",
         f"  mới: {new['model']} ({new['measured_at']})",
-        "-" * 58,
-        line("JSON hợp lệ lần đầu", "first_try_rate"),
-        line("Thành công cuối cùng", "success_rate"),
-        line("Retry trung bình", "avg_attempts", "{:.2f}"),
-        line("Thời gian/câu (giây)", "avg_seconds", "{:.1f}"),
-        "=" * 58,
-    ])
+        "-" * 62,
+    ]
+
+    for label, key, fmt, good_dir in metrics:
+        before = old.get(key, 0)
+        after = new.get(key, 0)
+
+        # "{:.0%}" của str.format ĐÃ tự nhân 100, nên không được nhân thêm.
+        # Trước đây nhân 2 lần nên 1.0 hiện thành "10000%".
+        old_txt = fmt.format(before)
+        new_txt = fmt.format(after)
+
+        delta = ""
+        if isinstance(before, (int, float)) and before != after:
+            diff = after - before
+            arrow = "▲" if diff > 0 else "▼"
+            improved = (diff > 0) if good_dir > 0 else (diff < 0)
+            verdict = "tốt hơn" if improved else "kém hơn"
+            delta = f"   {arrow} {verdict}"
+
+        lines.append(f"  {label:<26} {old_txt:>9} → {new_txt:>9}{delta}")
+
+    lines.append("=" * 62)
+    return "\n".join(lines)

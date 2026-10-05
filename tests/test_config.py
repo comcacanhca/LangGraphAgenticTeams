@@ -30,9 +30,14 @@ class TestValidConfig:
         assert cfg.project["name"] == "batubot"
 
     def test_resolves_active_profile(self, raw: dict) -> None:
-        """model phải lấy từ active_profile, không đọc trực tiếp profiles."""
+        """model phải lấy từ active_profile, không đọc trực tiếp profiles.
+
+        KHÔNG hardcode tên model — test phải đúng dù active_profile là
+        'test' hay 'final', vì việc đổi profile là việc thường xuyên.
+        """
         cfg = Config(copy.deepcopy(raw))
-        assert cfg.model["name"] == "qwen2.5-coder:7b"
+        expected = raw["profiles"][raw["active_profile"]]["name"]
+        assert cfg.model["name"] == expected
         assert cfg.model["profile"] == raw["active_profile"]
 
     def test_has_all_six_agents(self, raw: dict) -> None:
@@ -54,7 +59,10 @@ class TestProfileValidation:
             Config(raw)
 
     def test_rejects_profile_missing_field(self, raw: dict) -> None:
-        del raw["profiles"]["test"]["temperature"]
+        # Sửa profile ĐANG active, không phải profile "test" — vì nếu
+        # active_profile là "final" thì sửa "test" sẽ không kích hoạt
+        # validator.
+        del raw["profiles"][raw["active_profile"]]["temperature"]
         with pytest.raises(ConfigError, match="thiếu khoá"):
             Config(raw)
 

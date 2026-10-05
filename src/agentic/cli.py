@@ -17,31 +17,16 @@ import sys
 from pathlib import Path
 
 from agentic.config import ROOT, ConfigError, get_config
+from agentic.encoding import force_utf8
+
+# Ép UTF-8 trước khi in bất cứ thông báo tiếng Việt nào. config.py cũng
+# tự làm việc này khi được import, nhưng gọi lại ở đây để chắc chắn khi
+# chạy cli.py trực tiếp (python -m agentic.cli).
+force_utf8()
 
 OK = "[ OK ]"
 BAD = "[FAIL]"
 WARN = "[WARN]"
-
-
-def _force_utf8() -> None:
-    """Ép stdout/stderr dùng UTF-8.
-
-    Console Windows mặc định dùng cp1252, không có ký tự tiếng Việt có
-    dấu. Không ép thì mọi thông báo tiếng Việt đều ném UnicodeEncodeError
-    và CLI sập trước khi kịp kiểm tra gì.
-    """
-    for stream in (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        try:
-            reconfigure(encoding="utf-8", errors="replace")
-        except (ValueError, OSError):
-            # Console cũ không hỗ trợ — bỏ qua, in ASCII phần nào được.
-            pass
-
-
-_force_utf8()
 
 
 class Report:

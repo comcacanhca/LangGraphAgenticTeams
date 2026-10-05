@@ -47,3 +47,17 @@ desktop.ini
 
 # ── Logs ──────────────────────────────────────────────────────────────────
 *.log
+
+# ── Kết quả đo độ tin cậy model ─────────────────────────────────────────────
+# benchmark.json được commit có chủ đích: đây là bằng chứng đo được để
+# quyết định có nên đổi model hay không.
+#
+# Khi đổi active_profile, đổi tên file kết quả mới thành
+# benchmark_<model>.json rồi chạy:
+#   agentic benchmark --compare benchmark_<model-cu>.json --out benchmark.json
+benchmark*.json
+
+# ── Kết quả chạy tạm ──────────────────────────────────────────────────────
+*_out.txt
+*_err.txt
+*_pid.txt

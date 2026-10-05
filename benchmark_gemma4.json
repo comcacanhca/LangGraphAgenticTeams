@@ -1,0 +1,84 @@
+{
+  "measured_at": "2026-10-05T12:14:01+00:00",
+  "model": "gemma4:12b",
+  "profile": "final",
+  "params": {
+    "num_ctx": 16384,
+    "temperature": 0.7,
+    "max_retries": 1
+  },
+  "total_cases": 8,
+  "success_rate": 1.0,
+  "first_try_rate": 1.0,
+  "avg_attempts": 1.0,
+  "avg_seconds": 27.9,
+  "max_seconds": 46.9,
+  "est_sprint_minutes": 2.8,
+  "note": "est_sprint_minutes KHÔNG gồm thời gian chạy Gradle (thực tế thêm 1-3 phút mỗi vòng build). Sử dụng để SO SÁNH hai model, không phải để dự báo tuyệt đối.",
+  "cases": [
+    {
+      "case": 1,
+      "agent": "designer",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 21.99,
+      "error": ""
+    },
+    {
+      "case": 2,
+      "agent": "designer",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 18.01,
+      "error": ""
+    },
+    {
+      "case": 3,
+      "agent": "architect",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 46.86,
+      "error": ""
+    },
+    {
+      "case": 4,
+      "agent": "architect",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 41.89,
+      "error": ""
+    },
+    {
+      "case": 5,
+      "agent": "critic",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 23.15,
+      "error": ""
+    },
+    {
+      "case": 6,
+      "agent": "critic",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 23.08,
+      "error": ""
+    },
+    {
+      "case": 7,
+      "agent": "qa",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 30.39,
+      "error": ""
+    },
+    {
+      "case": 8,
+      "agent": "devops",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 17.77,
+      "error": ""
+    }
+  ]
+}
