@@ -277,6 +277,43 @@ def validate_critic(payload: Any) -> dict:
     return data
 
 
+def validate_backlog(payload: Any) -> dict:
+    """Backlog: danh sách user story + tiêu chí nghiệm thu.
+
+    Đây là contract riêng cho architect.decompose(). Không dùng schema
+    `architect` vì hàm đó đòi design + decisions, còn phân rã yêu cầu
+    cần trả về stories — ép sai schema khiến model trả nội dung đúng
+    nhưng bị validator bắc lỗi.
+    """
+    data = _require_dict(payload)
+    _require_keys(data, ["stories"], "backlog")
+
+    stories = data["stories"]
+    if not isinstance(stories, list) or not stories:
+        raise SchemaError(
+            "backlog.stories phải là danh sách không rỗng. "
+            "Yêu cầu phải được tách thành ít nhất một user story."
+        )
+
+    for i, story in enumerate(stories):
+        if not isinstance(story, dict):
+            raise SchemaError(f"stories[{i}] phải là object.")
+        _require_keys(
+            story, ["id", "title", "acceptance_criteria"], f"stories[{i}]"
+        )
+
+        # Tiêu chí nghiệm thu không rỗng là điều kiện chống "quên nhiệm vụ":
+        # story không có AC thì không có gì để test, không thể nghiệm thu.
+        ac = story["acceptance_criteria"]
+        if not isinstance(ac, list) or not ac:
+            raise SchemaError(
+                f"stories[{i}].acceptance_criteria phải là danh sách không rỗng. "
+                "Story không có tiêu chí nghiệm thu thì không thể kiểm thử."
+            )
+
+    return data
+
+
 VALIDATORS = {
     "architect": validate_architect,
     "designer": validate_designer,
@@ -284,6 +321,7 @@ VALIDATORS = {
     "qa": validate_qa,
     "devops": validate_devops,
     "critic": validate_critic,
+    "backlog": validate_backlog,
 }
 
 

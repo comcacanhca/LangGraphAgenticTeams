@@ -326,6 +326,81 @@ def cfg_root() -> Path:
     return ROOT
 
 
+def cmd_agents(args: argparse.Namespace) -> int:
+    """Thử tác tử từ dòng lệnh — nhanh hơn web UI để kiểm tra.
+
+    Có hai chế độ:
+      agentic agents --list          → xem các tác tử có sẵn
+      agentic agents designer "..."  → gọi một tác tử, in JSON kết quả
+    """
+    from agentic.agents import architect, designer, developer, devops, qa
+    from agentic.agents.base import build_agent
+
+    registry = {
+        "architect": architect,
+        "designer": designer,
+        "developer": developer,
+        "qa": qa,
+        "devops": devops,
+    }
+
+    if args.list or not args.who:
+        # Load cấu hình MỘT lần. Gọi get_config() trong vòng lặp sẽ in cảnh
+        # báo Ollama lặp lại 5 lần — rất nhiễu khi xem danh sách.
+        try:
+            cfg = get_config()
+            roles = {
+                n: " ".join(cfg.agents[n]["role"].split())[:58]
+                for n in registry
+                if n in cfg.agents
+            }
+        except (ConfigError, KeyError):
+            roles = {}
+
+        print("Các tác tử có thể thử:\n")
+        for name in sorted(registry):
+            print(f"  {name:<10} {roles.get(name, '')}")
+        print(
+            "\nDùng:  agentic agents <tên-tác-tử> \"<câu hỏi>\"\n"
+            "Ví dụ: agentic agents designer \"App ghi chú, màu pastel\""
+        )
+        return 0
+
+    if args.who not in registry:
+        print(f"Không có tác tử '{args.who}'. Có: {', '.join(sorted(registry))}")
+        return 1
+
+    try:
+        cfg = get_config()
+    except ConfigError as exc:
+        print(f"LỖI: {exc}")
+        return 1
+
+    module = registry[args.who]
+    agent = build_agent(args.who, cfg)
+
+    question = " ".join(args.question) if args.question else ""
+    if not question:
+        print("Cần câu hỏi. Ví dụ: agentic agents designer \"App ghi chú\"")
+        return 1
+
+    print(f"→ Gọi '{args.who}' với model {cfg.model['name']}...\n")
+    try:
+        if args.who == "designer":
+            result = designer.design_tokens(agent, question)
+        elif args.who == "architect":
+            result = architect.propose(agent, question)
+        else:
+            result = agent.ask(question)
+    except Exception as exc:  # noqa: BLE001 — cần báo lỗi cho người dùng
+        print(f"LỖI: {type(exc).__name__}: {exc}")
+        return 1
+
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    print(f"\n({agent.client.stats[-1].seconds:.1f}s)")
+    return 0
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     """In cấu hình đã resolve, bỏ qua phần bí mật nếu có."""
     try:
@@ -362,6 +437,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Đường dẫn benchmark cũ để so sánh (sau khi đổi model)",
     )
     p_bench.set_defaults(func=cmd_benchmark)
+
+    p_agents = sub.add_parser(
+        "agents", help="Thử tác tử từ dòng lệnh (gọi model thật)"
+    )
+    p_agents.add_argument("who", nargs="?", help="Tên tác tử")
+    p_agents.add_argument("question", nargs="*", help="Câu hỏi cho tác tử")
+    p_agents.add_argument(
+        "--list", action="store_true", help="Chỉ liệt kê các tác tử"
+    )
+    p_agents.set_defaults(func=cmd_agents)
 
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
