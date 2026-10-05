@@ -1,0 +1,84 @@
+{
+  "measured_at": "2026-10-05T11:42:16+00:00",
+  "model": "qwen2.5-coder:7b",
+  "profile": "test",
+  "params": {
+    "num_ctx": 16384,
+    "temperature": 0.3,
+    "max_retries": 3
+  },
+  "total_cases": 8,
+  "success_rate": 1.0,
+  "first_try_rate": 1.0,
+  "avg_attempts": 1.0,
+  "avg_seconds": 5.2,
+  "max_seconds": 9.4,
+  "est_sprint_minutes": 0.5,
+  "note": "est_sprint_minutes KHÔNG gồm thời gian chạy Gradle (thực tế thêm 1-3 phút mỗi vòng build). Sử dụng để SO SÁNH hai model, không phải để dự báo tuyệt đối.",
+  "cases": [
+    {
+      "case": 1,
+      "agent": "designer",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 5.96,
+      "error": ""
+    },
+    {
+      "case": 2,
+      "agent": "designer",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 4.96,
+      "error": ""
+    },
+    {
+      "case": 3,
+      "agent": "architect",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 7.58,
+      "error": ""
+    },
+    {
+      "case": 4,
+      "agent": "architect",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 9.37,
+      "error": ""
+    },
+    {
+      "case": 5,
+      "agent": "critic",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 3.59,
+      "error": ""
+    },
+    {
+      "case": 6,
+      "agent": "critic",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 2.54,
+      "error": ""
+    },
+    {
+      "case": 7,
+      "agent": "qa",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 3.81,
+      "error": ""
+    },
+    {
+      "case": 8,
+      "agent": "devops",
+      "ok": true,
+      "attempts": 1,
+      "seconds": 4.06,
+      "error": ""
+    }
+  ]
+}

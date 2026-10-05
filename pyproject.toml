@@ -36,3 +36,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "live: gọi model Ollama thật — chậm nhưng đo được độ tin cậy thật",
+]

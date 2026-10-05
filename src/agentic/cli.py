@@ -291,6 +291,56 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    """Đo độ tin cậy thật của model đang active.
+
+    Dùng để trả lời câu hỏi "có nên đổi model không" bằng số liệu thay
+    vì cảm giác.
+    """
+    from pathlib import Path
+
+    from agentic.llm import benchmark as bench
+
+    try:
+        cfg = get_config()
+    except ConfigError as exc:
+        print(f"LỖI: {exc}")
+        return 1
+
+    out = Path(args.out) if args.out else cfg_root() / "benchmark.json"
+
+    if args.compare:
+        old = Path(args.compare)
+        if not old.exists():
+            print(f"LỖI: không thấy file so sánh {old}")
+            return 1
+        print(bench.compare(old, out))
+        return 0
+
+    try:
+        data = bench.run(cfg, out)
+    except FileNotFoundError as exc:
+        print(f"LỖI: {exc}")
+        return 1
+
+    # Độ tin cậy thấp thì cảnh báo sớm, trước khi GĐ2 gặp vấn đề.
+    if data["success_rate"] < 1.0:
+        print(
+            "\n⚠ Một số câu không đạt. Xem trường 'error' trong benchmark.json."
+        )
+    if data["first_try_rate"] < 0.5:
+        print(
+            "⚠ Tỷ lệ đúng lần đầu thấp — hệ thống sẽ retry nhiều, "
+            "mỗi sprint sẽ chậm."
+        )
+    return 0
+
+
+def cfg_root() -> Path:
+    """Thư mục gốc hệ thống (nơi chứa agents.yaml)."""
+    return ROOT
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     """In cấu hình đã resolve, bỏ qua phần bí mật nếu có."""
     try:
@@ -316,6 +366,17 @@ def main(argv: list[str] | None = None) -> int:
 
     p_config = sub.add_parser("config", help="In cấu hình đang resolve")
     p_config.set_defaults(func=cmd_config)
+
+    p_bench = sub.add_parser(
+        "benchmark",
+        help="Đo độ tin cậy thật của model, ghi ra benchmark.json",
+    )
+    p_bench.add_argument("--out", help="Đường dẫn file kết quả")
+    p_bench.add_argument(
+        "--compare",
+        help="Đường dẫn benchmark cũ để so sánh (sau khi đổi model)",
+    )
+    p_bench.set_defaults(func=cmd_benchmark)
 
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
