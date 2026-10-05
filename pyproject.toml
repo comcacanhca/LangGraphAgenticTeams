@@ -1,0 +1,38 @@
+[project]
+name = "agentic"
+version = "0.1.0"
+description = "Hệ 6 tác tử LangGraph sinh app Android — cấu hình tập trung trong agents.yaml"
+requires-python = ">=3.11"
+
+# Giai đoạn 0 chỉ cần YAML + Pydantic. LangGraph và Jinja2 thêm ở GĐ1+.
+dependencies = [
+    "pyyaml>=6.0",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+# GĐ1 trở đi: orchestration + báo cáo HTML
+graph = [
+    "langgraph>=1.2.12",
+    "langgraph-checkpoint-sqlite>=3.1.1",
+]
+report = [
+    "jinja2>=3.1",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+agentic = "agentic.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

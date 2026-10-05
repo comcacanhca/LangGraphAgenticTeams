@@ -1,0 +1,49 @@
+# ── Runtime: checkpoint DB, log, Gradle cache ───────────────────────────────
+# KHÔNG commit. Checkpoint chứa toàn bộ state của hệ agent.
+.runtime/
+
+# ── Kết quả sinh ra ───────────────────────────────────────────────────────
+# workspace chứa project do agent tạo — mỗi project một git repo riêng.
+workspace/*/src/
+workspace/*/build/
+workspace/*/.gradle/
+
+# ── Bảo mật: KHÔNG BAO GIỜ commit ─────────────────────────────────────────
+# Keystore lọt vào git = mất khoá app vĩnh viễn, không thu hồi được.
+*.jks
+*.keystore
+local.properties
+service_account.json
+*.pem
+.env
+.env.*
+!.env.example
+
+# ── Gradle / Android ──────────────────────────────────────────────────────
+.gradle/
+build/
+*.apk
+*.aab
+captures/
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ── IDE ───────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+
+# ── OS ────────────────────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# ── Logs ──────────────────────────────────────────────────────────────────
+*.log

@@ -1,0 +1,324 @@
+﻿# ══════════════════════════════════════════════════════════════════════════
+#  HỆ AGENTIC 6 TÁC TỬ — FILE CẤU HÌNH DUY NHẤT
+#
+#  Mọi thứ agent cần biết đều nằm ở đây: model, sandbox, scrum, android,
+#  CI/CD. Đổi model / đổi runner / đổi version đều sửa file này, KHÔNG sửa code.
+# ══════════════════════════════════════════════════════════════════════════
+
+project:
+  # Mã định danh project. Dùng làm thread_id cho checkpointer, nên phải
+  # ổn định giữa các lần chạy — nếu đổi thì mất toàn bộ checkpoint.
+  name: batubot
+  workspace: "D:\\LangGraphAgenticTeams\\workspace"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  SANDBOX — ranh giới an toàn
+#
+#  Agent KHÔNG được ghi ra ngoài sandbox.root. Ràng buộc này được kiểm
+#  bằng CODE trong tầng tool (không phải bằng lời dặn trong prompt),
+#  vì LLM có thể bị prompt-injection bảo ghi file tùy ý.
+# ───────────────────────────────────────────────────────────────────────────
+sandbox:
+  root: "D:\\LangGraphAgenticTeams\\workspace"
+  forbid_write_outside_root: true
+
+  # Được đọc để tham khảo conventions, tuyệt đối KHÔNG ghi.
+  read_only_paths:
+    - "C:\\Users\\admin\\StudioProjects\\Chatbot"   # app tham khảo
+    - "D:\\RAG_BatTu"                              # RAG service
+
+  # Ngoài sandbox.root, chỉ ghi được vào đây (runtime/log/checkpoint).
+  writable_paths:
+    - "D:\\LangGraphAgenticTeams\\.runtime"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  MODEL — một model duy nhất làm não cho cả 6 tác tử
+#
+#  profiles cho phép test bằng model yếu trước. Khi nào hệ thống chạy ổn
+#  thì đổi active_profile sang "final". Toàn bộ hệ thống không đổi theo.
+# ───────────────────────────────────────────────────────────────────────────
+profiles:
+
+  # ── profile test: model có sẵn trên máy, VRAM thấp, chạy nhanh ──
+  test:
+    name: qwen2.5-coder:7b
+    num_ctx: 16384          # context của Qwen2.5-7B là 32768; để 16k cho an toàn
+    temperature: 0.3        # thấp: cần JSON chuẩn xác, không cần sáng tạo
+    top_p: 0.9
+    max_retries: 3          # model yếu → cần nhiều lần thử hơn
+
+  # ── profile final: dùng sau khi hệ thống đã chạy ổn ──
+  # ⚠ CHƯA BẬT. Cần nâng Ollama từ 0.30.7 lên >= 0.40.0 trước, vì bản cũ
+  #   không nhận kiến trúc 'gemma4' (lỗi: unknown model architecture).
+  #   Cần 7.7GB VRAM; num_ctx 65536 để lợi dụng context dài của Gemma 4.
+  final:
+    name: gemma4:12b
+    num_ctx: 65536
+    temperature: 0.7        # Gemma 4 khuyến nghị temperature=1.0; 0.7 cho phân tích
+    top_p: 0.95
+    top_k: 64
+    max_retries: 1
+
+# Profile đang dùng. Đổi 1 từ này là chuyển toàn bộ hệ thống.
+active_profile: test
+
+model:
+  backend: ollama
+  base_url: "http://localhost:11434"
+
+  # Giữ model "nóng" trong VRAM xuyên suốt1 phase để không phải nạp lại
+  # 4.7GB mỗi lượt gọi. "30m" = giữ 30 phút sau lượt gọi cuối.
+  keep_alive: "30m"
+
+
+gpu:
+  total_mb: 12288          # RTX 3060 12GB
+  reserve_mb: 1200         # chừa cho Windows/Chrome/dwm
+  single_model_only: true  # ⛔ KHÔNG nạp 2 model cùng lúc (chỉ chứa được 1)
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  LLM CALL — tham số chung cho mọi lượt gọi model
+# ───────────────────────────────────────────────────────────────────────────
+llm:
+  timeout_sec: 300         # model 7B trên máy yếu có thể chậm
+  # Khóa tuần tự: cả 6 agent dùng CHUNG 1 model Ollama. Nếu cho 3 request
+  # chạy song song, chúng sẽ tranh nhau VRAM và dễ OOM. Serialize lại.
+  serialize_calls: true
+  # Giữ model nóng giữa các agent để không phải nạp lại.
+  keep_warm_between_agents: true
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  SCRUM — quy trình Dev ⟲ QA
+#
+#  Mục tiêu: chống "quên nhiệm vụ". Cơ chế: mọi thứ nằm trong FILE trên đĩa
+#  (BACKLOG.md, SPRINT.md, DEFECTS.json), agent đọc lại thay vì phải nhớ.
+# ───────────────────────────────────────────────────────────────────────────
+scrum:
+  stories_per_sprint: 1      # 1 feature/sprint — scope nhỏ để model 7B xử lý nổi
+  max_sprints: 20            # trần, chống chạy vô hạn
+  max_retries_per_sprint: 3  # Dev được sửa tối đa 3 lần trước khi escalate
+  max_debate_rounds: 3       # trần vòng tranh luận thiết kế
+
+  # Definition of Done — 5 điều kiện, KIỂM BẰNG MÁY, không tin lời LLM.
+  # Sprint không đóng được nếu thiếu bất kỳ điều nào.
+  require:
+    build_passes: true            # ./gradlew assembleDebug exit 0
+    test_exists_and_passes: true  # ./gradlew test exit 0 VÀ có test thật
+    test_failed_before: true      # test phải FAIL trước khi PASS
+    acceptance_criteria: true     # mọi AC trong SPRINT.md được test bao phủ
+    commit_message: true          # commit message chứa mã US-xxx
+
+  # File quản lý Scrum — đều nằm trong workspace/<project>/
+  files:
+    backlog: BACKLOG.md
+    sprint:  SPRINT.md
+    lessons: LESSONS.md
+    defects: DEFECTS.json
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  ANDROID — toolchain sinh project MỚI
+#
+#  Bộ version ở đây là bộ nhất quán đã kiểm chứng, KHÔNG lấy từ project cũ.
+#  (Project Chatbot đang dùng AGP 8.5.2 + Gradle 9.0.0 — tương phản vì
+#   AGP 8.5 chỉ hỗ trợ Gradle 8.7.)
+# ───────────────────────────────────────────────────────────────────────────
+android:
+  package: com.batubot.app
+  compile_sdk: 35           # có sẵn trong SDK của bạn
+  min_sdk: 24
+  target_sdk: 35
+
+  agp: "8.7.3"
+  gradle: "8.9"             # phải tương thích với AGP ở trên
+  kotlin: "2.0.21"
+  compose_bom: "2024.10.01"
+
+  java_home: "C:\\Program Files\\Android\\Android Studio\\jbr"   # JBR 21
+  sdk_dir: "C:\\Users\\admin\\AppData\\Local\\Android\\Sdk"
+
+  # Bắt buộc trỏ ra ổ D: — ổ C: chỉ còn ~19GB, Gradle cache sẽ làm đầy ổ.
+  gradle_user_home: "D:\\LangGraphAgenticTeams\\.runtime\\gradle"
+
+  # Task Gradle dùng cho từng mục đích.
+  tasks:
+    build:   "assembleDebug"
+    test:    "testDebugUnitTest"
+    lint:    "lintDebug"
+    release: "assembleRelease"
+
+  # Emulator KHÔNG dùng được: máy không có system-images.
+  # → QA dựa vào JVM unit test + Robolectric, KHÔNG dựa vào test UI thật.
+  emulator_available: false
+
+# ───────────────────────────────────────────────────────────────────────────
+#  CI/CD — GitHub Actions
+#
+#  Workflow được SINH TỪ FILE NÀY (generated_from_config: true), nên version
+#  AGP/Kotlin trong CI không bao giờ lệch với máy local.
+# ───────────────────────────────────────────────────────────────────────────
+cicd:
+  enabled: true
+  runner: windows-latest    # khớp OS máy dev → tránh lỗi case-sensitivity
+  shell: pwsh
+
+  # Lệnh Gradle khác nhau giữa Windows và Linux. Sinh đúng bản theo runner.
+  command_variants:
+    windows: "gradlew.bat"
+    linux:   "./gradlew"
+
+  java_version: 17          # CI dùng JDK 17 (khác JBR 21 máy local,
+                            #  nhưng AGP hỗ trợ cả hai)
+
+  workflows:
+    ci:
+      enabled: true
+      trigger: push         # ★ chạy mỗi lần push
+      steps: [checkout, setup-java, setup-gradle, test, lint, build, upload-artifact]
+      artifacts: [apk-debug]
+    release:
+      enabled: false        # bật khi bạn bắt đầu maintain
+      trigger: "push tags v*"
+      steps: [checkout, setup-java, setup-gradle, release, upload-artifact]
+
+  # ★ DỪNG Ở APK. Không publish lên Google Play.
+  # Khi nào cần Play thì bật play.enabled và thêm secrets bên dưới.
+  play:
+    enabled: false
+
+  # Secrets lưu trong GitHub (không bao giờ commit).
+  secrets:
+    - KEYSTORE_B64
+    - KEYSTORE_PASSWORD
+    - KEY_ALIAS
+    - KEY_PASSWORD
+
+  # Chặn agent commit những thứ này — lọt vào git là mất khoá app vĩnh viễn.
+  forbid_in_git:
+    - "*.jks"
+    - "*.keystore"
+    - "local.properties"
+    - "service_account.json"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  TÁC TỬ — 6 vai trò
+#
+#  phases: phase nào tác tử tham gia. Cùng phase = được gọi tuần tự trong
+#  1 vòng tranh luận, dùng chung `design` hiện tại (không đọc lại transcript).
+#
+#  reporter.use_llm: false → Reporter là code thuần Jinja2, không gọi model.
+#  Lý do: để HTML luôn đẹp và không bao giờ vỡ. Model 7B sinh HTML trực tiếp
+#  sẽ ra CSS hỏng, thiếu thẻ, bảng vỡ layout — rồi bạn phải sửa tay.
+# ───────────────────────────────────────────────────────────────────────────
+agents:
+
+  architect:
+    role: >-
+      Kiến trúc sư trưởng. Phân rã yêu cầu thành user story, đề xuất kiến
+      trúc tổng thể, quyết định công nghệ và lập kế hoạch sprint.
+    prompt_file: prompts/architect.md
+    max_tokens: 6000
+    phases: [backlog, debate, planning]
+    produces: dict            # bắt buộc trả về JSON object
+
+  developer:
+    role: >-
+      Kỹ sư phần mềm senior. Viết và sửa code, đọc log build, tự sửa lỗi
+      biên dịch.
+    prompt_file: prompts/developer.md
+    max_tokens: 8000
+    phases: [debate, code]
+    produces: dict
+
+  qa:
+    role: >-
+      Kỹ sư QA senior. Viết unit test SONG SONG với Developer (đọc cùng
+      SPRINT.md), review code, phát hiện lỗi.
+    prompt_file: prompts/qa.md
+    max_tokens: 5000
+    phases: [debate, test]
+    produces: dict
+
+  devops:
+    role: >-
+      Kỹ sư DevOps senior. Đóng gói, sinh CI/CD GitHub Actions, kiểm tra
+      rủi ro triển khai, đảm bảo không lộ secret.
+    prompt_file: prompts/devops.md
+    max_tokens: 4000
+    phases: [debate, release]
+    phases: [debate, release]
+    produces: dict
+
+  designer:
+    role: >-
+      Thiết kế UI/UX. Xuất design token dạng JSON (màu hex, typography,
+      spacing, shape) thay vì mô tả văn xuôi — để Developer có hợp đồng
+      máy-đọc-được thay vì câu "màu pastel cho dễ thương".
+    prompt_file: prompts/designer.md
+    max_tokens: 4000
+    phases: [design]
+    produces: dict
+
+  reporter:
+    role: >-
+      Báo cáo kết quả ra HTML. Không dùng LLM — chỉ điền dữ liệu vào
+      template Jinja2.
+    prompt_file: prompts/reporter.md
+    max_tokens: 0
+    phases: [report]
+    use_llm: false
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  BÁO CÁO HTML
+#
+#  2 tài liệu, dùng chung engine Jinja2:
+#    design.html → sau khi các agent thống nhất thiết kế (để bạn duyệt)
+#    report.html → sau khi xong dự án
+# ───────────────────────────────────────────────────────────────────────────
+report:
+  templates:
+    design: templates/design.html.j2
+    report: templates/report.html.j2
+  output:
+    design: design.html
+    report: report.html
+
+  theme:
+    mode: auto              # auto = theo hệ điều hành (dark/light)
+    accent: "#0F766E"
+    font: "Inter"
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  BỘ NHỚ
+# ───────────────────────────────────────────────────────────────────────────
+memory:
+  # Dừng giữa chừng vẫn tiếp tục được — đây là lợi thế lớn so với phiên
+  # chat thường. thread_id lấy từ project.name.
+  checkpointer: sqlite
+  db_path: ".runtime/checkpoints.db"
+
+  # Ngân sách context cho mỗi lượt gọi agent. Vượt ngưỡng thì nén.
+  token_budget_per_agent: 8000
+
+  # Giữ bao nhiêu vòng gần nhất trong context. 1 = cô đọng phần lớn.
+  recent_rounds_in_context: 1
+
+
+# ───────────────────────────────────────────────────────────────────────────
+#  NGƯỠNG DỪNG (chống chạy vô hạn)
+#
+#  Mọi vòng lặp đều có trần. Hết trần → escalate hỏi bạn, KHÔNG tự lặp tiếp.
+#  Đây là nguyên nhân chính khiến hệ multi-agent tự trì dẫn vào vòng luẩn quanh.
+# ───────────────────────────────────────────────────────────────────────────
+limits:
+  recursion_limit: 100     # trần super-step của LangGraph
+  max_llm_calls_per_run: 200
+  max_build_retries: 3
+  max_qa_rounds: 2
