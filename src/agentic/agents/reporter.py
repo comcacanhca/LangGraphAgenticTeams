@@ -69,19 +69,25 @@ BASE_CSS = """\
 # Lưu ý: mọi ngoặc nhọn trong CSS phải NHÂN ĐÔI. Dùng chuỗi thô (r"...")
 # sẽ gặp xung đột với f-string nếu sau này cần chèn giá trị.
 DESIGN_CSS = """\
-  .swatches {{ display:flex; flex-wrap:wrap; gap:1rem; }}
-  .swatch {{ text-align:center; width:104px; }}
-  .chip {{ height:56px; border-radius:10px; border:1px solid var(--line); }}
-  .swatch .name {{ display:block; font-size:.78rem; margin-top:.5rem; }}
-  .swatch .hex {{ display:block; font-size:.72rem; color:var(--muted);
-                  font-family:ui-monospace, monospace; }}
-  table {{ width:100%; border-collapse:collapse; }}
-  th, td {{ text-align:left; padding:.7rem .5rem;
-            border-bottom:1px solid var(--line); vertical-align:top; }}
-  th {{ font-size:.8rem; text-transform:uppercase; color:var(--muted);
-        letter-spacing:.04em; }}
-  .flag {{ background:#fef3c7; color:#92400e; padding:.6rem .9rem;
-           border-radius:8px; font-size:.9rem; margin-top:1rem; }}
+  .swatches { display:flex; flex-wrap:wrap; gap:1rem; }
+  .swatch { text-align:center; width:104px; }
+  .chip { height:56px; border-radius:10px; border:1px solid var(--line); }
+  .swatch .name { display:block; font-size:.78rem; margin-top:.5rem; }
+  .swatch .hex { display:block; font-size:.72rem; color:var(--muted);
+                 font-family:ui-monospace, monospace; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:.7rem .5rem;
+           border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:.8rem; text-transform:uppercase; color:var(--muted);
+       letter-spacing:.04em; }
+  .flag { background:#fef3c7; color:#92400e; padding:.6rem .9rem;
+          border-radius:8px; font-size:.9rem; margin-top:1rem; }
+  .round { display:inline-block; min-width:2rem; text-align:center;
+           background:var(--accent); color:#fff; border-radius:999px;
+           padding:.1rem .5rem; font-size:.72rem; font-weight:600; }
+  .who { font-weight:600; white-space:nowrap; }
+  .detail { color:var(--fg); opacity:.9; font-size:.94rem; }
+  .empty { color:var(--muted); font-style:italic; }
 """
 
 # ── CSS riêng cho report.html (thẻ số liệu) ───────────────────────────────
@@ -130,7 +136,29 @@ def design_to_html(data: dict[str, Any], out_path: Path | None = None) -> str:
         f"      <tr><td>{_esc(d.get('decision'))}</td>"
         f"<td>{_esc(d.get('reason'))}</td></tr>"
         for d in data.get("decisions", [])
-    ) or '      <tr><td colspan="2" class="muted">Chưa có quyết định.</td></tr>'
+    ) or '      <tr><td colspan="2" class="empty">Chưa có quyết định.</td></tr>'
+
+    # ── Bảng tranh luận ──
+    # Đây là phần quan trọng để bạn thấy CÁCH các tác tử tranh luận,
+    # không chỉ kết quả cuối. Nếu chỉ có kết quả, bạn không biết hệ thống
+    # có thật sự thảo luận hay chỉ chạy vòng lặp cho có.
+    debate = "\n".join(
+        "      <tr>"
+        f'<td><span class="round">{_esc(e.get("round", 0))}</span></td>'
+        f'<td class="who">{_esc(e.get("agent"))}</td>'
+        f'<td class="detail">{_esc(e.get("detail", ""))}</td>'
+        "</tr>"
+        for e in data.get("debate", [])
+    )
+    debate_block = (
+        f'  <h2>Quá trình tranh luận</h2>\n  <table>\n'
+        "    <thead><tr><th>Vòng</th><th>Tác tử</th>"
+        "<th>Nội dung</th></tr></thead>\n"
+        f"    <tbody>\n{debate}\n    </tbody>\n  </table>\n"
+        if debate
+        else '  <h2>Quá trình tranh luận</h2>\n'
+             '  <div class="panel"><p class="empty">Chưa có lượt tranh luận.</p></div>\n'
+    )
 
     flag = ""
     if data.get("fallback_used"):
@@ -153,6 +181,7 @@ def design_to_html(data: dict[str, Any], out_path: Path | None = None) -> str:
         "  <table>\n"
         "    <thead><tr><th>Quyết định</th><th>Lý do</th></tr></thead>\n"
         f"    <tbody>\n{rows}\n    </tbody>\n  </table>\n\n"
+        f"{debate_block}\n"
         "  <footer>Sinh bởi Reporter (không dùng LLM) · "
         f'{_esc(data.get("generated_at", ""))}</footer>'
     )

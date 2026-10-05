@@ -326,6 +326,166 @@ def cfg_root() -> Path:
     return ROOT
 
 
+def cmd_design(args: argparse.Namespace) -> int:
+    """Chạy phase thiết kế: các tác tử tranh luận rồi dừng ở GATE 1.
+
+    Gọi lại sau khi đã có checkpoint sẽ tiếp tục, không chạy lại từ đầu.
+    """
+    from agentic.graph.builder import run_design_phase
+    from agentic.memory.checkpointer import thread_config
+
+    try:
+        cfg = get_config()
+    except ConfigError as exc:
+        print(f"LỖI: {exc}")
+        return 1
+
+    requirement = " ".join(args.requirement)
+    if not requirement:
+        print(
+            'Cần yêu cầu. Ví dụ:\n'
+            '  agentic design "App đếm ngày sinh nhật, ghi nhật ký"'
+        )
+        return 1
+
+    print(f"→ Chạy tranh luận thiết kế với {cfg.model['name']}")
+    print(f"  Yêu cầu: {requirement}\n")
+    print("  Mỗi vòng: architect → developer → qa → devops → hội tụ")
+    print("  Dừng khi hết phản biện nghiêm trọng hoặc hết số vòng cho phép.\n")
+
+    try:
+        graph, config = run_design_phase(cfg, requirement, args.mood)
+    except Exception as exc:  # noqa: BLE001 — cần báo rõ cho người dùng
+        print(f"LỖI: {type(exc).__name__}: {exc}")
+        return 1
+
+    # interrupt() chặn ở GATE 1 — graph.invoke trả về với __interrupt__.
+    state = graph.get_state(config)
+    out = cfg.project_dir() / "design.html"
+
+    print()
+    print("=" * 64)
+    if out.exists():
+        print(f"  Bản thiết kế: {out}")
+        print(f"  Mở file đó bằng trình duyệt để đọc.")
+    print()
+    print("  Trạng thái:")
+    for key in ("debate_round", "blocking_count"):
+        print(f"    {key}: {state.values.get(key)}")
+
+    design = state.values.get("design", {})
+    if design:
+        print(f"    quyết định kiến trúc: {len(design.get('decisions', []))}")
+        tokens = design.get("tokens") or {}
+        print(f"    màu design token: {len(tokens.get('palette', {}))}")
+
+    gate = state.values.get("gate1_result")
+    if gate and not gate.get("approved"):
+        print(f"\n  ⚠ {gate.get('reason') or gate.get('error')}")
+
+    print("\n" + "=" * 64)
+    print("\n  Hệ thống đang DỪNG ở GATE 1 chờ bạn.")
+    print("  Duyệt:  agentic approve --yes")
+    print("  Từ chối: agentic approve --no \"<lý do>\"")
+    return 0
+
+
+def cmd_approve(args: argparse.Namespace) -> int:
+    """Trả lời GATE: tiếp tục hoặc dừng.
+
+    Resume bằng cách gọi lại graph với input None — đó là cách LangGraph
+    tiếp tục từ checkpoint, không phải chạy lại từ đầu.
+    """
+    from langgraph.types import Command
+
+    from agentic.graph.builder import build_graph
+    from agentic.memory.checkpointer import thread_config
+
+    try:
+        cfg = get_config()
+    except ConfigError as exc:
+        print(f"LỖI: {exc}")
+        return 1
+
+    graph = build_graph(cfg)
+    config = thread_config(cfg)
+
+    state = graph.get_state(config)
+    if not state.interrupts:
+        print("Không có GATE nào đang chờ. Chạy 'agentic design' trước.")
+        return 1
+
+    decision = {
+        "approved": bool(args.yes),
+        "feedback": " ".join(args.feedback) if args.feedback else "",
+    }
+
+    print(f"→ Trả lời GATE 1: {'DUYỆT' if args.yes else 'TỪ CHỐI'}")
+    try:
+        graph.invoke(Command(resume=decision), config=config)
+    except Exception as exc:  # noqa: BLE001
+        print(f"LỖI: {type(exc).__name__}: {exc}")
+        return 1
+
+    if args.yes:
+        print("\n✓ Đã duyệt. Tiếp theo là phase Scrum (sẽ có ở GĐ4).")
+    else:
+        reason = decision["feedback"] or "không nêu lý do"
+        print(f"\n✗ Đã từ chối: {reason}")
+        print("  Sửa agents.yaml hoặc chạy lại 'agentic design' với yêu cầu khác.")
+
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """Xem tiến trình đã đi được đâu."""
+    from agentic.memory.checkpointer import thread_config
+
+    try:
+        cfg = get_config()
+    except ConfigError as exc:
+        print(f"LỖI: {exc}")
+        return 1
+
+    from agentic.graph.builder import build_graph
+
+    graph = build_graph(cfg)
+    state = graph.get_state(thread_config(cfg))
+
+    print(f"Project : {cfg.project['name']}")
+    print(f"Model   : {cfg.model['name']}  (profile {cfg.model['profile']})")
+    print(f"Thread  : {cfg.thread_id}")
+
+    if not state.values:
+        print("\nChưa chạy gì. Bắt đầu bằng: agentic design \"<yêu cầu>\"")
+        return 0
+
+    v = state.values
+    print(f"\nTiến trình:")
+    print(f"  vòng tranh luận : {v.get('debate_round', 0)}")
+    print(f"  phản biện chặn  : {v.get('blocking_count', 0)}")
+
+    design = v.get("design", {})
+    if design.get("design"):
+        print(f"  thiết kế        : {len(design['design'])} ký tự")
+    if design.get("decisions"):
+        print(f"  quyết định      : {len(design['decisions'])}")
+    if design.get("tokens"):
+        print(f"  màu token       : {len(design['tokens'].get('palette', {}))}")
+
+    print(f"  lượt tranh luận  : {len(v.get('transcript', []))}")
+
+    gate = v.get("gate1_result")
+    if state.interrupts:
+        print("\n  ⏸ ĐANG CHỜ bạn duyệt GATE 1")
+        print("    agentic approve --yes")
+    elif gate:
+        status = "duyệt" if gate.get("approved") else "từ chối"
+        print(f"\n  GATE 1: {status}")
+
+    return 0
+
+
 def cmd_agents(args: argparse.Namespace) -> int:
     """Thử tác tử từ dòng lệnh — nhanh hơn web UI để kiểm tra.
 
@@ -447,6 +607,38 @@ def main(argv: list[str] | None = None) -> int:
         "--list", action="store_true", help="Chỉ liệt kê các tác tử"
     )
     p_agents.set_defaults(func=cmd_agents)
+
+    p_design = sub.add_parser(
+        "design",
+        help="Chạy tranh luận thiết kế, dừng ở GATE 1 chờ bạn duyệt",
+    )
+    p_design.add_argument("requirement", nargs="*", help="Yêu cầu xây app")
+    p_design.add_argument(
+        "--mood",
+        default="đơn giản, dễ thương",
+        help="Phong cách giao diện mong muốn",
+    )
+    p_design.set_defaults(func=cmd_design)
+
+    p_approve = sub.add_parser(
+        "approve", help="Trả lời GATE 1 (duyệt hoặc từ chối)"
+    )
+    p_approve.add_argument(
+        "--yes", action="store_true", help="Duyệt bản thiết kế"
+    )
+    p_approve.add_argument(
+        "--no", dest="yes", action="store_false",
+        help="Từ chối bản thiết kế",
+    )
+    p_approve.set_defaults(func=cmd_approve, yes=True)
+    p_approve.add_argument(
+        "feedback", nargs="*", help="Lý do nếu từ chối, hoặc góp ý chỉnh sửa"
+    )
+
+    p_status = sub.add_parser(
+        "status", help="Xem tiến trình hiện tại"
+    )
+    p_status.set_defaults(func=cmd_status)
 
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):

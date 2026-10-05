@@ -3,10 +3,22 @@
 .runtime/
 
 # ── Kết quả sinh ra ───────────────────────────────────────────────────────
-# workspace chứa project do agent tạo — mỗi project một git repo riêng.
+# workspace chứa project do agent tạo. Thiết kế/báo cáo (.html) được
+# commit có chủ đích — đó là thứ bạn duyệt ở GATE, mất đi thì mất dấu
+# vết quyết định. Source code sinh ra sẽ là git repo riêng, không ở đây.
+workspace/*/design.html
+workspace/*/report.html
+workspace/*/BACKLOG.md
+workspace/*/SPRINT.md
+workspace/*/LESSONS.md
+workspace/*/DEFECTS.json
+
+# KHÔNG commit source do agent sinh — mỗi project là git repo riêng,
+# tránh lẫn lịch sử git của hệ thống với lịch sử của app được sinh.
 workspace/*/src/
 workspace/*/build/
 workspace/*/.gradle/
+workspace/*/app/
 
 # ── Bảo mật: KHÔNG BAO GIỜ commit ─────────────────────────────────────────
 # Keystore lọt vào git = mất khoá app vĩnh viễn, không thu hồi được.

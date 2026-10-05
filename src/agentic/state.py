@@ -24,6 +24,8 @@ from __future__ import annotations
 import operator
 from typing import Annotated, Any, TypedDict
 
+from langgraph.managed import RemainingSteps
+
 
 class TeamState(TypedDict, total=False):
     """State của toàn bộ hệ thống.
@@ -87,6 +89,33 @@ class TeamState(TypedDict, total=False):
 
     build_retries: int
     """Số lần đã thử sửa build trong sprint hiện tại."""
+
+    # ── State nội bộ của vòng tranh luận ────────────────────────────────
+    pending_critiques: list[dict[str, Any]]
+    """Phản biện của VÒNG HIỌN TẠI, chờ Architect xử lý.
+
+    Tách khỏi transcript vì đây là thứ tác tủ CẦN THẤY — nó được đưa vào
+    prompt của Architect. Transcript chỉ để bạn đọc.
+    """
+
+    _route: str
+    """Quyết định của converge_router, dùng để rẽ nhánh trong graph.
+
+    Tên có gạch dưới để đánh dấu "nội bộ", không phải dữ liệu nghiệp vụ.
+    """
+
+    blocking_count: int
+    """Số phản biện mức high/blocker ở vòng hiện tại — để bạn thấy vì sao
+    hệ thống còn phải sửa thêm."""
+
+    remaining_steps: RemainingSteps
+    """Bộ đếm của LangGraph: số super-step còn lại trước khi chạm trần.
+
+    Đặc biệt quan trọng khi có vòng lặp: nếu node sập (lỗi code, lỗi
+    model) thì state KHÔNG được ghi, các bộ đếm không tăng, và LangGraph
+    retry — dẫn tới lặp vô hạn. Đọc khoá này trước khi gọi model cho
+    phép dừng có kiểm soát thay vì treo.
+    """
 
     # ── Lịch sử — BẠN ĐỌC, TÁC TỦ KHÔNG THẤY ─────────────────────────
     transcript: Annotated[list[dict[str, Any]], operator.add]

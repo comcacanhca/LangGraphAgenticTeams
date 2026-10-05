@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>batubot</title>
+<style>  :root {{
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #0F766E; --surface: #f9fafb;
+  }}
+  @media (prefers-color-scheme: dark) {{
+    :root {{ --bg:#111827; --fg:#f3f4f6; --muted:#9ca3af;
+             --line:#1f2937; --surface:#1f2937; }}
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{ font-family: Inter, system-ui, -apple-system, sans-serif;
+          margin:0; padding:2.5rem 1.5rem; background:var(--bg);
+          color:var(--fg); line-height:1.65; }}
+  main {{ max-width: 900px; margin: 0 auto; }}
+  h1 {{ font-size:1.9rem; margin:0 0 .25rem; }}
+  h2 {{ font-size:1.15rem; margin:2.5rem 0 1rem; padding-bottom:.5rem;
+        border-bottom:1px solid var(--line); text-transform:uppercase;
+        letter-spacing:.06em; color:var(--muted); }}
+  .lede {{ color:var(--muted); margin:0 0 2rem; }}
+  .panel {{ background:var(--surface); border:1px solid var(--line);
+            border-radius:12px; padding:1.25rem 1.5rem; }}
+  .muted {{ color:var(--muted); font-size:.85em; }}
+  footer {{ margin-top:3rem; color:var(--muted); font-size:.82rem;
+            border-top:1px solid var(--line); padding-top:1rem; }}
+  code {{ font-family:ui-monospace,monospace; font-size:.9em;
+          background:var(--surface); padding:.15rem .4rem;
+          border-radius:4px; }}
+  .swatches { display:flex; flex-wrap:wrap; gap:1rem; }
+  .swatch { text-align:center; width:104px; }
+  .chip { height:56px; border-radius:10px; border:1px solid var(--line); }
+  .swatch .name { display:block; font-size:.78rem; margin-top:.5rem; }
+  .swatch .hex { display:block; font-size:.72rem; color:var(--muted);
+                 font-family:ui-monospace, monospace; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:.7rem .5rem;
+           border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:.8rem; text-transform:uppercase; color:var(--muted);
+       letter-spacing:.04em; }
+  .flag { background:#fef3c7; color:#92400e; padding:.6rem .9rem;
+          border-radius:8px; font-size:.9rem; margin-top:1rem; }
+  .round { display:inline-block; min-width:2rem; text-align:center;
+           background:var(--accent); color:#fff; border-radius:999px;
+           padding:.1rem .5rem; font-size:.72rem; font-weight:600; }
+  .who { font-weight:600; white-space:nowrap; }
+  .detail { color:var(--fg); opacity:.9; font-size:.94rem; }
+  .empty { color:var(--muted); font-style:italic; }
+</style>
+</head>
+<body>
+<main>
+  <h1>batubot</h1>
+  <p class="lede">Sau 0 vòng tranh luận · 6 quyết định · 6 màu design token</p>
+
+  <h2>Nội dung thiết kế</h2>
+  <div class="panel">Ứng dụng sẽ có một màn hình chính hiển thị số ngày còn lại cho sinh nhật người dùng. Có một nút &#x27;Ghi nhật ký&#x27; để chuyển sang màn hình ghi nhật ký. Mỗi ngày, người dùng có thể viết một nhật ký ngắn và lưu lại. Màn hình lịch sử sẽ hiển thị tất cả các nhật ký đã được ghi.</div>
+
+  <h2>Design token</h2>
+  <div class="panel">
+    <div class="swatches">
+      <div class="swatch">
+        <div class="chip" style="background:#F8A5C2"></div>
+        <span class="name">primary</span>
+        <span class="hex">#F8A5C2</span>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#B8E0D2"></div>
+        <span class="name">secondary</span>
+        <span class="hex">#B8E0D2</span>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#FFF9F5"></div>
+        <span class="name">background</span>
+        <span class="hex">#FFF9F5</span>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#FFFFFF"></div>
+        <span class="name">surface</span>
+        <span class="hex">#FFFFFF</span>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#3D3A45"></div>
+        <span class="name">text</span>
+        <span class="hex">#3D3A45</span>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#FFD166"></div>
+        <span class="name">accent</span>
+        <span class="hex">#FFD166</span>
+      </div>
+    </div>
+  </div>
+
+  <h2>Quyết định kiến trúc</h2>
+  <table>
+    <thead><tr><th>Quyết định</th><th>Lý do</th></tr></thead>
+    <tbody>
+      <tr><td>Sử dụng Jetpack Compose + Material3</td><td>Jetpack Compose là một thư viện UI hiện đại, dễ sử dụng và hiệu suất cao. Material3 cung cấp thiết kế hiện đại và dễ sử dụng.</td></tr>
+      <tr><td>Màn hình chính hiển thị số ngày còn lại cho sinh nhật</td><td>Đây là yêu cầu chính của ứng dụng, nên phải được ưu tiên.</td></tr>
+      <tr><td>Nút &#x27;Ghi nhật ký&#x27; chuyển sang màn hình ghi nhật ký</td><td>Đây là cách đơn giản nhất để người dùng ghi nhật ký.</td></tr>
+      <tr><td>Màn hình lịch sử hiển thị tất cả các nhật ký đã được ghi</td><td>Đây là cách tốt nhất để người dùng theo dõi và quản lý các nhật ký của họ.</td></tr>
+      <tr><td>Không sử dụng emulator</td><td>Việc kiểm thử bằng JVM unit test + Robolectric sẽ đảm bảo chất lượng và ổn định của ứng dụng.</td></tr>
+      <tr><td>Màu sắc phải là mã hex</td><td>Đây là yêu cầu kỹ thuật, nên phải được tuân thủ.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Quá trình tranh luận</h2>
+  <table>
+    <thead><tr><th>Vòng</th><th>Tác tử</th><th>Nội dung</th></tr></thead>
+    <tbody>
+      <tr><td><span class="round">0</span></td><td class="who">architect</td><td class="detail">Ứng dụng sẽ có một màn hình chính hiển thị số ngày còn lại cho sinh nhật người dùng. Có một nút &#x27;Ghi nhật ký&#x27; để chuyển sang màn hình ghi nhật ký. Mỗi ngày, người dùng có thể viết một nhật ký ngắn và lưu lại. Màn hình lịch sử sẽ hiển thị tất cả các nhật ký đã được ghi.</td></tr>
+      <tr><td><span class="round">0</span></td><td class="who">developer</td><td class="detail">[medium] Cấu trúc dữ liệu hiện tại có thể khó mở rộng khi cần lưu trữ nhiều ngày và nhiều nhật ký.; [medium] Thiết kế hiện tại có thể khó build được với Compose do việc quản lý trạng thái và dữ liệu phức tạp.; [medium] Nếu lưu trữ nhiều ngày và nhật ký, hiệu năng có thể bị ảnh hưởng do việc truy xuất và hiển thị dữ liệu lớn.; [medium] Thiết kế hiện tại có thể khó sửa khi yêu cầu thay đổi do việc quản lý trạng thái và dữ liệu phức tạp.</td></tr>
+      <tr><td><span class="round">0</span></td><td class="who">qa</td><td class="detail">[medium] Tiêu chí nghiệm thu &#x27;Người dùng có thể viết và lưu nhật ký&#x27; không kiểm chứng được tự động.; [medium] Hành vi &#x27;Ghi nhật ký&#x27; khó kiểm thử trên Compose mà không có emulator.; [low] Trường hợp biên &#x27;Màn hình lịch sử hiển thị tất cả các nhật ký đã được ghi&#x27; khi danh sách nhật ký rỗng hoặc rất nhiều phần tử dễ bị tác giả quên.</td></tr>
+      <tr><td><span class="round">0</span></td><td class="who">devops</td><td class="detail">[medium] Dung lượng build có thể lớn do lưu trữ nhiều ngày nhật ký.; [medium] Phần mềm cần kiểm tra tương thích với phiên bản AGP và Gradle.; [low] Không có thông tin về việc cần emulator để kiểm thử.; [low] Không có thông tin về việc cần service account để publish lên Google Play.</td></tr>
+      <tr><td><span class="round">0</span></td><td class="who">system</td><td class="detail">hội tụ — chuyển sang thiết kế giao diện</td></tr>
+      <tr><td><span class="round">1</span></td><td class="who">designer</td><td class="detail">xuất design token</td></tr>
+    </tbody>
+  </table>
+
+  <footer>Sinh bởi Reporter (không dùng LLM) · 2026-10-05 20:59</footer>
+</main>
+</body>
+</html>
