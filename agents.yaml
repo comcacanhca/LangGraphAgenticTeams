@@ -54,10 +54,10 @@ profiles:
   # ── profile test: model có sẵn trên máy, VRAM thấp, chạy nhanh ──
   test:
     name: qwen2.5-coder:7b
-    num_ctx: 16384          # context của Qwen2.5-7B là 32768; để 16k cho an toàn
-    temperature: 0.3        # thấp: cần JSON chuẩn xác, không cần sáng tạo
+    num_ctx: 16384
+    temperature: 0.0        # Hạ xuống 0.0 để triệt tiêu hiện tượng lặp token (repeat limit)
     top_p: 0.9
-    max_retries: 3          # model yếu → cần nhiều lần thử hơn
+    max_retries: 3
 
   # ── profile cloud: model chạy trên server Ollama, KHÔNG tốn VRAM máy ──
   #
