@@ -71,7 +71,15 @@ profiles:
     vram_estimate_mb: 9500
 
 # Profile đang dùng. Đổi 1 từ này là chuyển toàn bộ hệ thống.
-active_profile: final
+#
+# GĐ3+ dùng `test` (qwen2.5-coder:7b) vì GĐ3 chạy vòng tranh luận nhiều
+# vòng: 4 tác tử × 3 vòng × 2.8 phút (gemma4) = ~34 phút cho MỘT lần
+# chạy thử, so với ~6 phút với qwen. Chênh lệch đó lặp lại ở mọi lần
+# bạn sửa code, nên giai đoạn xây dựng chọn model nhanh.
+#
+# Khi hệ thống đã ổn định và bạn chạy thật (sinh app hoàn chỉnh), đổi
+# sang `final` để đổi lấy chất lượng thiết kế tốt hơn.
+active_profile: test
 
 model:
   backend: ollama
