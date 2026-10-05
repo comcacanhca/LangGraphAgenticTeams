@@ -249,6 +249,63 @@ def designer_node(state: TeamState, cfg) -> dict:
     }
 
 
+def blueprint_node(state: TeamState, cfg) -> dict:
+    """Architect vẽ sơ đồ chi tiết cho bản thiết kế.
+
+    Tách khỏi architect_node vì đây là lượt gọi khác: propose/revise quyết
+    định, blueprint sinh sơ đồ Mermaid + mô hình dữ liệu + mô tả màn hình
+    + rủi ro. Cần sau khi hội tụ, khi thiết kế đã ổn định để vẽ.
+    """
+    agent = build_agent("architect", cfg)
+    try:
+        bp = architect.blueprint(
+            agent, state["requirement"], state["design"]["design"]
+        )
+    except AgentError as exc:
+        # Không vẽ được sơ đồ vẫn dùng được — chỉ mất phần sơ đồ.
+        return {
+            "blueprint": {},
+            "transcript": [
+                {
+                    "round": state.get("debate_round", 0),
+                    "agent": "architect",
+                    "action": f"bỏ qua bản vẽ: {exc}",
+                }
+            ],
+        }
+
+    return {
+        "blueprint": bp,
+        "stories": _to_stories(bp),
+        "transcript": [
+            {
+                "round": state.get("debate_round", 0),
+                "agent": "architect",
+                "action": (
+                    f"vẽ bản: {len(bp.get('screens', []))} màn hình, "
+                    f"{len(bp.get('risks', []))} rủi ro"
+                ),
+            }
+        ],
+    }
+
+
+def _to_stories(bp: dict) -> list[dict]:
+    """Chuyển danh sách màn hình thành user story sơ bộ.
+
+    GĐ3 chỉ cần bản thiết kế; GĐ4 sẽ tách user story đầy đủ qua
+    architect.decompose() với tiêu chí nghiệm thu nghiêm ngặt hơn.
+    """
+    return [
+        {
+            "id": f"US-{i:03d}",
+            "title": s.get("name", f"Màn hình {i}"),
+            "acceptance_criteria": [s.get("purpose", "")],
+        }
+        for i, s in enumerate(bp.get("screens", []), start=1)
+    ]
+
+
 # ── Router: hội tụ ───────────────────────────────────────────────────────
 
 
@@ -389,6 +446,7 @@ def build_design_council(cfg):
     b.add_node("devops", ft.partial(devops_critic, cfg=cfg))
     b.add_node("collect", collect_critique)
     b.add_node("designer", ft.partial(designer_node, cfg=cfg))
+    b.add_node("blueprint", ft.partial(blueprint_node, cfg=cfg))
     b.add_node("converge", ft.partial(converge_router, cfg=cfg))
     b.add_node("finalize", finalize_node)
     b.add_node("escalate", escalate_node)
@@ -428,7 +486,10 @@ def build_design_council(cfg):
     )
 
     b.add_edge("finalize", "designer")
-    b.add_edge("designer", END)
+    # Designer xong mới vẽ sơ đồ: màu sắc và màn hình cần cùng nhau để
+    # mockup khớp với những gì sẽ thật sự xây.
+    b.add_edge("designer", "blueprint")
+    b.add_edge("blueprint", END)
     b.add_edge("escalate", END)
 
     return b

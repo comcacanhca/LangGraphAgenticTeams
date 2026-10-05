@@ -49,6 +49,13 @@ class TeamState(TypedDict, total=False):
     stories: list[dict[str, Any]]
     """User story đã phân rã, kèm acceptance_criteria có thể kiểm thử."""
 
+    blueprint: dict[str, Any]
+    """Bản vẽ chi tiết: sơ đồ Mermaid, mô hình dữ liệu, mô tả màn hình, rủi ro.
+
+    Sinh bởi architect.blueprint() sau khi thiết kế hội tụ. Đây là nguồn
+    cho phần sơ đồ và mockup trong design.html.
+    """
+
     sprint: dict[str, Any]
     """Sprint hiện tại: {story_id, acceptance_criteria[], retry, done}."""
 

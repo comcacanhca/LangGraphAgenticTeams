@@ -314,6 +314,75 @@ def validate_backlog(payload: Any) -> dict:
     return data
 
 
+def validate_blueprint(payload: Any) -> dict:
+    """Bản vẽ kiến trúc — nguồn cho sơ đồ Mermaid và mockup UI.
+
+    Đây là contract cho architect.blueprint(). Tách riêng khỏi schema
+    `architect` vì đầu ra khác hẳn: cần sơ đồ, mô hình dữ liệu, luồng
+    màn hình, rủi ro — không phải prose + decisions.
+
+    Mermaid được lưu dạng TEXT chứ không phải SVG. Lý do: model sinh code
+    Mermaid đáng tin hơn nhiều so với sinh SVG thẳng, và text có thể
+    kiểm tra được (đếm ngoặc, tìm từ khoá bắt buộc) — còn SVG hỏng thì
+    chỉ biết khi mở file.
+    """
+    data = _require_dict(payload)
+    _require_keys(
+        data, ["overview", "architecture_diagram", "data_model"], "blueprint"
+    )
+
+    overview = data["overview"]
+    if not isinstance(overview, str) or len(overview.strip()) < 100:
+        raise SchemaError(
+            "blueprint.overview phải là mô tả ≥100 ký tự. "
+            "Thiết kế 279 ký tự là quá sơ sài để bạn duyệt — "
+            "cần đủ chi tiết để hiểu hệ thống hoạt động thế nào."
+        )
+
+    # ── Sơ đồ Mermaid ──
+    for field, hint in (
+        ("architecture_diagram", "graph TD"),
+        ("data_model", "erDiagram"),
+    ):
+        diagram = data[field]
+        if not isinstance(diagram, str) or not diagram.strip():
+            raise SchemaError(f"blueprint.{field} phải là chuỗi Mermaid.")
+        # Kiểm tra mã nguồn Mermaid có cú pháp cơ bản: phải có dòng
+        # khai báo kiểu sơ đồ. Nếu không, mermaid.js sẽ vẽ lỗi runtime
+        # và bạn thấy khối đỏ thay vì sơ đồ.
+        first = diagram.strip().splitlines()[0].strip()
+        if not first.startswith(hint):
+            raise SchemaError(
+                f"blueprint.{field} phải bắt đầu bằng `{hint}`. "
+                f"Đang là: {first[:60]!r}"
+            )
+
+    # ── Luồng màn hình: phải là danh sách có mô tả ──
+    screens = data.get("screens", [])
+    if not isinstance(screens, list):
+        raise SchemaError("blueprint.screens phải là danh sách.")
+    for i, screen in enumerate(screens):
+        if not isinstance(screen, dict):
+            raise SchemaError(f"screens[{i}] phải là object.")
+        _require_keys(screen, ["name", "purpose", "elements"], f"screens[{i}]")
+        if not isinstance(screen["elements"], list) or not screen["elements"]:
+            raise SchemaError(
+                f"screens[{i}].elements phải là danh sách không rỗng. "
+                "Danh sách phần tử là thứ dùng để dựng mockup UI."
+            )
+
+    # ── Rủi ro: phải có mức độ để vẽ ma trận ──
+    risks = data.get("risks", [])
+    if not isinstance(risks, list):
+        raise SchemaError("blueprint.risks phải là danh sách.")
+    for i, risk in enumerate(risks):
+        if not isinstance(risk, dict):
+            raise SchemaError(f"risks[{i}] phải là object.")
+        _require_keys(risk, ["risk", "impact", "mitigation"], f"risks[{i}]")
+
+    return data
+
+
 VALIDATORS = {
     "architect": validate_architect,
     "designer": validate_designer,
@@ -322,6 +391,7 @@ VALIDATORS = {
     "devops": validate_devops,
     "critic": validate_critic,
     "backlog": validate_backlog,
+    "blueprint": validate_blueprint,
 }
 
 

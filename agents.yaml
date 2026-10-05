@@ -1,4 +1,4 @@
-﻿# ══════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════
 #  HỆ AGENTIC 6 TÁC TỬ — FILE CẤU HÌNH DUY NHẤT
 #
 #  Mọi thứ agent cần biết đều nằm ở đây: model, sandbox, scrum, android,
@@ -38,6 +38,16 @@ sandbox:
 #
 #  profiles cho phép test bằng model yếu trước. Khi nào hệ thống chạy ổn
 #  thì đổi active_profile sang "final". Toàn bộ hệ thống không đổi theo.
+#
+#  BA LOẠI PROFILE, tên model quyết định cách chạy:
+#    qwen2.5-coder:7b       → cục bộ, nạp vào VRAM, giữ ảnh bằng keep_alive
+#    gemma4:31b-cloud       → CLOUD, Ollama tự chuyển tiếp lên server
+#    gpt-oss:120b-cloud     → CLOUD, tương tự (117B tham số)
+#
+#  Phân biệt bằng HẬU TỐ `-cloud` trong tên, không khai cờ riêng — tránh
+#  cấu hình mâu thuẫn (ví dụ tên cloud nhưng lại khai vram_estimate_mb).
+#  Client tự bỏ qua kiểm tra VRAM cho model cloud vì chúng không chiếm
+#  VRAM máy này.
 # ───────────────────────────────────────────────────────────────────────────
 profiles:
 
@@ -48,6 +58,40 @@ profiles:
     temperature: 0.3        # thấp: cần JSON chuẩn xác, không cần sáng tạo
     top_p: 0.9
     max_retries: 3          # model yếu → cần nhiều lần thử hơn
+
+  # ── profile cloud: model chạy trên server Ollama, KHÔNG tốn VRAM máy ──
+  #
+  # Chỉ cần GỌI TÊN MODEL có hậu tố `-cloud` là chạy — không cần API key,
+  # không cần `ollama pull` (Ollama tự chuyển tiếp lên server). Điều kiện
+  # duy nhất: máy đã `ollama signin` một lần.
+  #
+  # Ưu: 31B tham số — chất lượng thiết kế hơn hẳn 7B local, mà RTX 3060
+  #     không bao giờ nạp nổi. Nhược: mỗi lượt mất vài giây chờ mạng, và
+  #     nội dung gửi lên server của Ollama (nên tuyệt đối không gửi khoá,
+  #     mật khẩu hay dữ liệu riêng tư qua profile này).
+  cloud:
+    name: gemma4:31b-cloud
+    num_ctx: 16384          # cloud có context rộng hơn, nhưng 16k là đủ và
+                            # giảm chi phí; tăng lên chỉ khi thực sự cần
+    temperature: 0.3        # thấp: contract JSON cần chính xác, giống profile test
+    top_p: 0.9
+    max_retries: 3
+    # Không khai vram_estimate_mb: client tự bỏ qua kiểm tra VRAM cho model
+    # cloud (xem LlmClient.is_cloud). Khai thừa sẽ gây hiểu nhầm.
+
+  # ── profile cloud-code: model cloud MẠNH NHẤT tìm được trên Ollama ──
+  #
+  # 117B tham số — mạnh hơn cả gemma4:31b-cloud. Phù hợp khi cần chất lượng
+  # tối đa (ví dụ phân tích yêu cầu phức tạp), đổi lại mỗi lượt chậm hơn.
+  cloud_code:
+    name: gpt-oss:120b-cloud
+    num_ctx: 16384
+    temperature: 0.3
+    top_p: 0.9
+    max_retries: 3
+    # Mô hình rất lớn nên cần chờ lâu hơn — nếu không sẽ hết timeout
+    # giữa chừng một lượt dài.
+    timeout_sec: 600
 
   # ── profile final: dùng sau khi hệ thống đã chạy ổn ──
   # ⚠ CHƯA BẬT — cần nâng Ollama từ 0.35.1 lên >= 0.40.0 trước, vì bản
@@ -239,7 +283,10 @@ agents:
       Kiến trúc sư trưởng. Phân rã yêu cầu thành user story, đề xuất kiến
       trúc tổng thể, quyết định công nghệ và lập kế hoạch sprint.
     prompt_file: prompts/architect.md
-    max_tokens: 6000
+    # Trần OUTPUT thực tế, đo từ lần chạy thật: thiết kế + quyết định
+    # khoảng 1700 ký tự ≈ 700 token. Đặt 6000 thì model không dừng sớm
+    # và một node mất hơn 5 phút mà không sinh thêm thông tin gì.
+    max_tokens: 2500
     phases: [backlog, debate, planning]
     produces: dict            # bắt buộc trả về JSON object
 
@@ -248,7 +295,8 @@ agents:
       Kỹ sư phần mềm senior. Viết và sửa code, đọc log build, tự sửa lỗi
       biên dịch.
     prompt_file: prompts/developer.md
-    max_tokens: 8000
+    # Do thuc te: code Android mot luot ~3000 ky tu ~1200 token.
+    max_tokens: 3000
     phases: [debate, code]
     produces: dict
 
@@ -257,7 +305,8 @@ agents:
       Kỹ sư QA senior. Viết unit test SONG SONG với Developer (đọc cùng
       SPRINT.md), review code, phát hiện lỗi.
     prompt_file: prompts/qa.md
-    max_tokens: 5000
+    # Do thuc te: phan bien + danh sach loi ~600 ky tu ~300 token.
+    max_tokens: 2000
     phases: [debate, test]
     produces: dict
 
@@ -266,7 +315,8 @@ agents:
       Kỹ sư DevOps senior. Đóng gói, sinh CI/CD GitHub Actions, kiểm tra
       rủi ro triển khai, đảm bảo không lộ secret.
     prompt_file: prompts/devops.md
-    max_tokens: 4000
+    # Do thuc te: phan bien rui ro ~450 ky tu ~250 token.
+    max_tokens: 1500
     phases: [debate, release]
     phases: [debate, release]
     produces: dict
@@ -277,7 +327,8 @@ agents:
       spacing, shape) thay vì mô tả văn xuôi — để Developer có hợp đồng
       máy-đọc-được thay vì câu "màu pastel cho dễ thương".
     prompt_file: prompts/designer.md
-    max_tokens: 4000
+    # Do thuc te: palette + typography ~380 ky tu ~250 token.
+    max_tokens: 1200
     phases: [design]
     produces: dict
 

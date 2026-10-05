@@ -14,6 +14,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from agentic.config import ROOT, ConfigError, get_config
@@ -110,8 +111,19 @@ def check_ollama(r: Report) -> None:
 
 
 def check_model(cfg, r: Report) -> None:
-    """Model trong active_profile phải có sẵn trên máy."""
+    """Model trong active_profile phải dùng được.
+
+    Model CLOUD không xuất hiện trong `ollama list` (nó chạy trên server, máy
+    không tải về), nên phải hỏi API `/api/show` thay vì đọc danh sách cục
+    bộ. Nếu không tách hai trường hợp, mọi profile cloud đều bị báo FAIL
+    dù chạy hoàn toàn bình thường.
+    """
     name = cfg.model["name"]
+
+    if name.endswith("-cloud"):
+        check_cloud_model(cfg, name, r)
+        return
+
     try:
         out = subprocess.run(
             ["ollama", "list"], capture_output=True, text=True, timeout=15
@@ -121,9 +133,55 @@ def check_model(cfg, r: Report) -> None:
         return
 
     if name.split(":")[0].lower() in out.stdout.lower():
-        r.ok(f"Model '{name}' đã cài")
+        r.ok(f"Model '{name}' đã cài (cục bộ)")
     else:
         r.fail(f"Model '{name}' chưa có. Cài bằng: ollama pull {name}")
+
+
+def check_cloud_model(cfg, name: str, r: Report) -> None:
+    """Kiểm tra model cloud có tồn tại và máy đã đăng nhập chưa.
+
+    Điều kiện duy nhất cho model cloud là đã `ollama signin` một lần — không
+    cần API key, không cần `ollama pull`. Không kiểm tra điều này thì lỗi
+    hiện ra giữa chừng dưới dạng HTTP 401 khó hiểu.
+    """
+    import json
+    import urllib.request
+
+    base = cfg.model.get("base_url", "http://localhost:11434")
+
+    try:
+        req = urllib.request.Request(
+            f"{base}/api/show",
+            data=json.dumps({"model": name}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            info = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            r.fail(
+                f"Model cloud '{name}' bị từ chối truy cập.\n"
+                f"        Chạy: ollama signin"
+            )
+        else:
+            r.fail(
+                f"Model cloud '{name}' không tồn tại (HTTP {exc.code}).\n"
+                f"        Kiểm tra danh sách: https://ollama.com/search?c=cloud"
+            )
+        return
+    except (OSError, urllib.error.URLError) as exc:
+        r.fail(f"Không gọi được Ollama tại {base}: {exc}")
+        return
+
+    details = info.get("details", {})
+    params = details.get("parameter_size", "?")
+    r.ok(
+        f"Model cloud '{name}' sẵn sàng "
+        f"({params} tham số, {details.get('quantization_level', '?')}, "
+        f"không tốn VRAM máy)"
+    )
 
 
 def check_java(cfg, r: Report) -> None:
@@ -353,8 +411,38 @@ def cmd_design(args: argparse.Namespace) -> int:
     print("  Mỗi vòng: architect → developer → qa → devops → hội tụ")
     print("  Dừng khi hết phản biện nghiêm trọng hoặc hết số vòng cho phép.\n")
 
+    started = time.perf_counter()
+
+    def show(node: str, update: dict) -> None:
+        """In tiến triển từng node.
+
+        Mỗi node gọi model mất 5-15 giây, cả vòng cỡ 1-2 phút. Không in
+        gì trong lúc đó thì không phân biệt được "đang chạy" với "treo" —
+        và lần này đã phải mất nhiều phút chẩn đoán vì thiếu thông tin này.
+        """
+        elapsed = time.perf_counter() - started
+        detail = ""
+
+        # Rút thông tin đáng quan tâm ra, đừng in cả state.
+        for entry in (update or {}).get("transcript", []):
+            detail = entry.get("action") or ""
+            if detail:
+                break
+
+        bp = (update or {}).get("blueprint") or {}
+        if bp:
+            detail = (
+                f"{len(bp.get('screens', []))} màn hình, "
+                f"{len(bp.get('risks', []))} rủi ro"
+            )
+
+        suffix = f"  — {detail}" if detail else ""
+        print(f"  [{elapsed:5.1f}s] {node}{suffix}", flush=True)
+
     try:
-        graph, config = run_design_phase(cfg, requirement, args.mood)
+        graph, config = run_design_phase(
+            cfg, requirement, args.mood, on_progress=show
+        )
     except Exception as exc:  # noqa: BLE001 — cần báo rõ cho người dùng
         print(f"LỖI: {type(exc).__name__}: {exc}")
         return 1

@@ -34,15 +34,17 @@ def render_design_node(state: TeamState, cfg) -> dict:
     phải hoàn tất TRƯỚC khi gọi interrupt(), vì khi resume node sẽ chạy
     lại từ đầu và side-effect sẽ lặp lần nữa.
     """
-    design = state.get("design", {})
-
     payload = {
         "project": cfg.project["name"],
-        "summary": _summarise(design),
-        "design": design.get("design", "Chưa có nội dung."),
-        "decisions": design.get("decisions", []),
-        "design_tokens": design.get("tokens", {}),
-        "fallback_used": design.get("fallback_used"),
+        "summary": _summarise(state),
+        "design": state.get("design", {}).get("design", "Chưa có nội dung."),
+        "decisions": state.get("design", {}).get("decisions", []),
+        "design_tokens": state.get("design", {}).get("tokens", {}),
+        "fallback_used": state.get("design", {}).get("fallback_used"),
+        "rounds": state.get("debate_round", 0),
+        # Blueprint là nguồn cho sơ đồ Mermaid, mockup UI, bảng rủi ro.
+        "blueprint": state.get("blueprint", {}),
+        "stories": state.get("stories", []),
         # Transcript đưa vào HTML để bạn thấy quá trình tranh luận,
         # không chỉ kết quả cuối.
         "debate": _debate_rows(state),
@@ -66,15 +68,19 @@ def render_design_node(state: TeamState, cfg) -> dict:
     }
 
 
-def _summarise(design: dict) -> str:
+def _summarise(state: TeamState) -> str:
     """Một dòng tóm tắt cho tiêu đề báo cáo."""
-    rounds = design.get("round", 0)
+    design = state.get("design", {})
+    bp = state.get("blueprint", {})
     tokens = design.get("tokens") or {}
-    n_colors = len(tokens.get("palette", {}))
+    palette = tokens.get("palette", {})
+    screens = bp.get("screens", [])
     return (
-        f"Sau {rounds} vòng tranh luận · "
+        f"Sau {state.get('debate_round', 0)} vòng tranh luận · "
         f"{len(design.get('decisions', []))} quyết định · "
-        f"{n_colors} màu design token"
+        f"{len(palette)} màu design token · "
+        f"{len(screens)} màn hình · "
+        f"{len(bp.get('risks', []))} rủi ro"
     )
 
 
@@ -132,7 +138,7 @@ def gate1_node(state: TeamState, cfg) -> dict:
         "type": "design_approval",
         "message": "Mở file design.html và duyệt bản thiết kế.",
         "file": str(art),
-        "summary": _summarise(state.get("design", {})),
+        "summary": _summarise(state),
         "rounds": state.get("debate_round", 0),
     })
 
@@ -171,16 +177,37 @@ def build_graph(cfg):
     return b.compile(checkpointer=build_checkpointer(cfg))
 
 
-def run_design_phase(cfg, requirement: str, mood: str = "đơn giản, dễ thương"):
+def run_design_phase(cfg, requirement: str, mood: str = "đơn giản, dễ thương",
+                     on_progress=None):
     """Chạy phase thiết kế từ yêu cầu đến GATE 1.
 
     Trả về (graph, config) để bạn có thể resume sau khi duyệt.
+
+    Dùng stream thay vì invoke vì một lần chạy gồm 8-10 lượt gọi model,
+    tổng cỡ 1-2 phút. invoke() im lặng suốt, nên lỡ gặp lỗi thì không
+    biết đang kẹt ở node nào — đã gặp tình huống này. stream() cho ta
+    thấy tiến triển từng bước mà vẫn trả về kết quả cuối.
+
+    on_progress(node) được gọi sau mỗi node; mặc định là im lặng.
     """
     graph = build_graph(cfg)
     cfg.project_dir().mkdir(parents=True, exist_ok=True)
 
-    graph.invoke(
-        {"requirement": requirement, "mood": mood, "debate_round": 0},
-        config=thread_config(cfg),
-    )
-    return graph, thread_config(cfg)
+    payload = {"requirement": requirement, "mood": mood, "debate_round": 0}
+    config = thread_config(cfg)
+
+    # subgraphs=True là BẮT BUỘC: vòng tranh luận là một subgraph được
+    # compile riêng rồi nhúng vào graph cha. Không có tham số này,
+    # stream() chỉ yield khi CẢ subgraph xong — tức là im lặng suốt 1-2
+    # phút rồi mới in ra một dòng, không hữu ích khi cần biết đang ở đâu.
+    for chunk in graph.stream(
+        payload, config=config, subgraphs=True, stream_mode="updates"
+    ):
+        # chunk là {(node, namespace): state_update}. Gọi callback để CLI
+        # in tiến triển; không in ở đây để thư viện không phụ thuộc console.
+        if on_progress:
+            for key, update in chunk.items():
+                node = key[0] if isinstance(key, tuple) else key
+                on_progress(node, update)
+
+    return graph, config

@@ -82,6 +82,7 @@ class Agent:
                 system_prompt=system,
                 user_prompt=user_prompt,
                 validate_output=validate_output,
+                max_tokens=self.max_tokens,
             )
         except SchemaError as exc:
             raise AgentError(

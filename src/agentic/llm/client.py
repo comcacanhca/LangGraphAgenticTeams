@@ -58,7 +58,18 @@ class LlmClient:
     max_retries: int
     serialize: bool = True
 
+    # Trần mặc định khi tác tử không khai báo max_tokens (hoặc khai 0).
+    # Luôn hữu hạn: không có trần thì model sinh tới khi đầy context.
+    default_max_tokens: int = 4000
+
     governor: VramGovernor | None = None
+
+    # Model cloud do Ollama chuyển tiếp lên server, không nằm trong VRAM máy.
+    # Nhận biết theo hậu tố `-cloud` trong tên, theo quy ước của Ollama —
+    # không cần khai thêm cờ trong config, tránh cấu hình mâu thuẫn.
+    @property
+    def is_cloud(self) -> bool:
+        return self.model.endswith("-cloud")
     stats: list[CallStat] = field(default_factory=list)
 
     # Khoá toàn cục: mọi lượt gọi model phải đi qua đây một lần.
@@ -69,6 +80,12 @@ class LlmClient:
         """Dựng client từ agents.yaml (đã resolve qua Config.model)."""
         model_cfg = cfg.model
         llm_cfg = cfg.llm
+
+        # Model cloud qua mạng cần chờ lâu hơn nhiều: 31B tham số ở server
+        # có thể mất 30-60 giây cho một lượt dài, trong khi 7B local chỉ 10s.
+        # Cho phép profile ghi đè bằng `timeout_sec`.
+        timeout = model_cfg.get("timeout_sec") or llm_cfg.get("timeout_sec", 300)
+
         client = cls(
             base_url=model_cfg.get("base_url", "http://localhost:11434"),
             model=model_cfg["name"],
@@ -76,7 +93,7 @@ class LlmClient:
             temperature=model_cfg["temperature"],
             top_p=model_cfg.get("top_p", 0.9),
             keep_alive=model_cfg.get("keep_alive", "30m"),
-            timeout_sec=llm_cfg.get("timeout_sec", 300),
+            timeout_sec=timeout,
             max_retries=model_cfg.get("max_retries", 3),
             serialize=llm_cfg.get("serialize_calls", True),
             governor=VramGovernor(
@@ -129,6 +146,7 @@ class LlmClient:
         system_prompt: str,
         user_prompt: str,
         validate_output: bool = True,
+        max_tokens: int | None = None,
     ) -> dict:
         """Gọi model và ép trả về đúng JSON theo contract của tác tử.
 
@@ -138,13 +156,18 @@ class LlmClient:
 
         validate_output=False dùng cho prompt trung gian (ví dụ phản biện
         đọc thiết kế) nơi ta chỉ cần text, không cần JSON chặt.
+
+        max_tokens truyền xuống thành `num_predict` của llama.cpp. Không có
+        thì model sinh đến khi đầy context — một node phản biện có thể mất
+        5 phút thay vì 10 giây. Đây là tham số BẮT BUỘC, không phải tuỳ chọn.
         """
         payload = {
             "model": self.model,
             "stream": False,
             # Ép JSON ngay từ server — hiệu quả hơn mọi cách sửa ở Python.
             "format": "json",
-            "keep_alive": self.keep_alive,
+            # keep_alive chỉ có nghĩa với model CỤC BỘ (giữ trong VRAM).
+            # Gửi cho model cloud là vô nghĩa, nên bỏ hẳn để payload sạch.
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -153,8 +176,15 @@ class LlmClient:
                 "num_ctx": self.num_ctx,
                 "temperature": self.temperature,
                 "top_p": self.top_p,
+                # Không có num_predict thì model sinh tới khi đầy context.
+                # Một node phản biện đơn giản có thể mất 5 phút, cả vòng
+                # tranh luận mất 15 phút — và ta không hề biết vì sao.
+                # max_tokens=0 nghĩa là "không giới hạn", nên phải chặn.
+                "num_predict": self._num_predict(max_tokens),
             },
         }
+        if not self.is_cloud:
+            payload["keep_alive"] = self.keep_alive
 
         started = time.perf_counter()
         last_error = ""
@@ -189,9 +219,26 @@ class LlmClient:
             f"      Lỗi cuối: {last_error}"
         )
 
+    def _num_predict(self, max_tokens: int | None) -> int:
+        """Chốt trần số token model được sinh.
+
+        Reporter có max_tokens=0 trong agents.yaml vì nó không gọi LLM, nhưng
+        nếu ai đó vô tình bật LLM cho nó thì 0 sẽ thành "sinh vô hạn". Vì vậy
+        luôn dùng một trần hữu hạn, kể cả khi cấu hình là 0.
+        """
+        if not max_tokens or max_tokens <= 0:
+            return self.default_max_tokens
+        # Không để trần vượt quá context: phần còn lại dành cho prompt.
+        return min(max_tokens, self.num_ctx // 2)
+
     def _invoke(self, payload: dict) -> str:
-        """Bọc _post bằng khoá tuần tự và kiểm tra VRAM trước."""
-        if self.governor is not None:
+        """Bọc _post bằng khoá tuần tự và kiểm tra VRAM trước.
+
+        Model CLOUD bỏ qua kiểm tra VRAM: nó chạy trên server của Ollama,
+        không chiếm VRAM máy này. Nếu vẫn kiểm tra, ước lượng 31B tham số
+        (~62GB) sẽ vượt xa 12GB của máy và mọi lượt gọi bị chặn oan.
+        """
+        if self.governor is not None and not self.is_cloud:
             ok, reason = self.governor.can_load(self.model, self.num_ctx)
             if not ok:
                 raise LlmError(f"VRAM không đủ để chạy model.\n        {reason}")

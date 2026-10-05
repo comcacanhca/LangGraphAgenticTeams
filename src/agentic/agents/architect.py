@@ -115,6 +115,72 @@ Trả về JSON đúng cấu trúc sau, không thêm gì khác:
     return agent.ask(prompt, contract="backlog")
 
 
+def blueprint_prompt(requirement: str, design: str) -> str:
+    """Dựng prompt bản vẽ.
+
+    Tách riêng khỏi blueprint() để công cụ chẩn đoán tái dùng đúng prompt
+    này — nếu test prompt riêng thì không phát hiện được lệch phiên bản.
+    """
+    return f"""YÊU CẦU:
+{requirement}
+
+THIẾT KẾ ĐÃ THỐNG NHẤT:
+{design}
+
+Hãy vẽ bản thiết kế chi tiết cho ứng dụng này.
+
+## 1. overview (bắt buộc ≥100 ký tự)
+Giải thích đầy đủ: app làm gì, luồng người dùng chính ra sao, dữ liệu
+lưu ở đâu, vì sao chọn kiến trúc đó. Đây là phần bạn đọc để hiểu hệ
+thống — viết cho người không rành code.
+
+## 2. architecture_diagram — Mermaid, BẮT ĐẦU bằng `graph TD`
+Sơ đồ kiến trúc tầng: UI → ViewModel → Repository → DataSource.
+Dùng cú pháp Mermaid `graph TD`. Ghi nhãn tiếng Việt có dấu trong ngoặc
+vuông, ví dụ:
+
+graph TD
+  A[Màn hình chính Compose] --> B[ViewModel]
+  B --> C[Repository]
+  C --> D[(DataStore hoặc SQLite)]
+
+## 3. data_model — Mermaid, BẮT ĐẦU bằng `erDiagram`
+Cấu trúc dữ liệu. Ví dụ:
+
+erDiagram
+  NhatKy {{
+    string id PK
+    string noiDung
+    date ngayTao
+  }}
+
+## 4. screens — danh sách màn hình
+Mỗi màn hình: {{"name": ..., "purpose": ..., "elements": [...]}}
+`elements` là danh sách phần tử hiển thị (nút, thẻ, danh sách, ô nhập…)
+— đây là dữ liệu dùng dựng mockup UI, nên phải cụ thể.
+
+## 5. risks — rủi ro kỹ thuật
+Mỗi rủi ro: {{"risk": ..., "impact": "cao|trung bình|thấp", "mitigation": ...}}
+
+LƯU Ý: dùng ```json ... ``` bao quanh JSON, không thêm chữ nào khác."""
+
+
+def blueprint(agent: Agent, requirement: str, design: str) -> dict[str, Any]:
+    """Sinh bản vẽ chi tiết: sơ đồ kiến trúc, mô hình dữ liệu, luồng màn hình.
+
+    Đây là hàm SINH SƠ ĐỒ, dùng contract `blueprint`. Nó bổ sung cho
+    propose() chứ không thay thế: propose cho quyết định và lý do,
+    blueprint cho thứ nhìn thấy được.
+
+    Vì sao dùng Mermaid chứ không vẽ ảnh:
+      - LangGraph không tạo ảnh, và máy không đủ VRAM cho model ảnh
+      - Model sinh code Mermaid đáng tin hơn sinh SVG thẳng
+      - Mermaid là TEXT nên validate được trước khi render
+      - mermaid.js đã bundle sẵn → mở file offline vẫn vẽ được
+    """
+    return agent.ask(blueprint_prompt(requirement, design), contract="blueprint")
+
+
 def make(agent: Agent | None = None, cfg=None):
     """Dựng tác tử kiến trúc từ cấu hình."""
     if agent is not None:

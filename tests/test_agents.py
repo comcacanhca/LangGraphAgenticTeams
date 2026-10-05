@@ -97,6 +97,150 @@ class TestReporterHtml:
         assert cfg.agents["reporter"]["use_llm"] is False
 
 
+# ── Reporter: sơ đồ Mermaid + mockup UI ─────────────────────────────────
+
+
+BLUEPRINT = {
+    "overview": "Ứng dụng ghi nhật ký sinh nhật, theo dõi số ngày còn lại "
+    "và lưu lịch sử vào cơ sở dữ liệu cục bộ.",
+    "architecture_diagram": "graph TD\n  A[Compose] --> B[ViewModel]",
+    "data_model": "erDiagram\n  NhatKy {\n    string id PK\n  }",
+    "screens": [
+        {
+            "name": "Màn hình chính",
+            "purpose": "Xem số ngày còn lại",
+            "elements": ["tiêu đề", "thẻ đếm ngày", "nút Ghi nhật ký"],
+        }
+    ],
+    "risks": [
+        {"risk": "Mất dữ liệu", "impact": "cao", "mitigation": "Sao lưu"}
+    ],
+}
+
+
+class TestReporterDiagrams:
+    def test_embeds_mermaid_source(self) -> None:
+        html = reporter.design_to_html(
+            {"blueprint": BLUEPRINT, "design": BLUEPRINT["overview"]}
+        )
+        assert "mermaid" in html
+        assert "graph TD" in html
+
+    def test_inlines_mermaid_js_for_offline_use(self) -> None:
+        """★ File thiết kế phải mở được khi MÁY KHÔNG CÓ MẠNG.
+
+        Dùng thẻ <script src="cdn..."> thì trình duyệt chặn khi mở file
+        file://, và mất mạng thì không vẽ được. Nhúng inline là cách chắc
+        chắn duy nhất.
+        """
+        html = reporter.design_to_html({"blueprint": BLUEPRINT})
+        assert "mermaid.initialize" in html
+        assert 'src="https://' not in html
+        assert 'src="//cdn' not in html
+
+    def test_diagram_wrapped_for_render(self) -> None:
+        html = reporter.design_to_html({"blueprint": BLUEPRINT})
+        assert '<pre class="mermaid">' in html
+        assert "Đang vẽ sơ đồ" in html
+
+    def test_escapes_mermaid_source(self) -> None:
+        """★ Mermaid đi qua HTML phải escape.
+
+        Model có thể sinh nhãn chứa `<` hoặc `>`. Không escape thì sơ đồ
+        vừa hỏng hiển thị vừa là lỗ hổng XSS trong file báo cáo.
+        """
+        bp = dict(BLUEPRINT)
+        bp["architecture_diagram"] = "graph TD\n  A[<img onerror=alert(1)>]"
+        html = reporter.design_to_html({"blueprint": bp})
+        assert "<img onerror" not in html
+        assert "&lt;img onerror" in html
+
+
+class TestReporterMockup:
+    def test_renders_phone_per_screen(self) -> None:
+        bp = dict(
+            BLUEPRINT,
+            screens=BLUEPRINT["screens"] + [{
+                "name": "Lịch sử", "purpose": "Xem nhật ký",
+                "elements": ["danh sách nhật ký"],
+            }],
+        )
+        html = reporter.design_to_html({"blueprint": bp})
+        assert html.count('class="phone"') == 2
+        assert "Lịch sử" in html
+
+    def test_uses_palette_colours(self) -> None:
+        """Mockup phải dùng đúng màu Designer chọn, không phải màu hardcode."""
+        html = reporter.design_to_html({
+            "blueprint": BLUEPRINT,
+            "design_tokens": {"palette": {"primary": "#ABCDEF"}},
+        })
+        assert "#ABCDEF" in html
+
+    def test_classifies_element_types(self) -> None:
+        bp = dict(
+            BLUEPRINT,
+            screens=[{
+                "name": "T", "purpose": "p",
+                "elements": [
+                    "tiêu đề", "nút Lưu", "ô nhập nội dung",
+                    "danh sách", "ảnh đại diện",
+                ],
+            }],
+        )
+        html = reporter.design_to_html({"blueprint": bp})
+        assert "ph-title" in html
+        assert "ph-btn" in html
+        assert "ph-input" in html
+
+    def test_empty_screens_is_safe(self) -> None:
+        html = reporter.design_to_html({"blueprint": dict(BLUEPRINT, screens=[])})
+        assert "chưa mô tả màn hình nào" in html
+
+
+class TestReporterRiskTable:
+    @pytest.mark.parametrize(
+        ("impact", "css"), [
+            ("cao", "risk-cao"),
+            ("Mức độ cao", "risk-cao"),
+            ("trung bình", "risk-tb"),
+            ("thấp", "risk-thap"),
+        ],
+    )
+    def test_maps_impact_to_class(self, impact: str, css: str) -> None:
+        assert reporter._risk_class(impact) == css
+
+    def test_unknown_impact_defaults_to_medium(self) -> None:
+        """Không nhận diện được thì mặc định trung bình — không mất rủi ro."""
+        assert reporter._risk_class("???") == "risk-tb"
+        assert reporter._risk_class("") == "risk-tb"
+
+
+class TestReporterSprintPlan:
+    def test_lists_stories_with_acceptance(self) -> None:
+        html = reporter.design_to_html({
+            "stories": [{
+                "id": "US-001",
+                "title": "Xem số ngày còn lại",
+                "acceptance_criteria": ["Hiển thị đúng số ngày"],
+            }],
+        })
+        assert "US-001" in html
+        assert "Hiển thị đúng số ngày" in html
+
+
+class TestColorMix:
+    def test_mixes_hex(self) -> None:
+        assert reporter._mix("#000000", "#FFFFFF", 0.5) == "#808080"
+
+    def test_full_ratio_returns_target(self) -> None:
+        assert reporter._mix("#123456", "#FFFFFF", 1.0) == "#ffffff"
+
+    def test_bad_input_falls_back(self) -> None:
+        """Màu lỗi từ model không được làm sập trang."""
+        assert reporter._mix("x", "#FFF", 0.5) == "#888888"
+
+
 # ── DevOps: secret scanner chạy bằng code, không cần model ───────────────
 
 

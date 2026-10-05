@@ -84,7 +84,11 @@ class Config:
                 raise ConfigError(f"profile '{name}' thiếu khoá '{key}'")
 
         # Cảnh báo sớm nếu profile cuối được bật mà Ollama chưa đủ mới.
-        if p["name"].startswith("gemma4"):
+        #
+        # CHỈ áp dụng cho model CỤC BỘ. Model cloud chạy trên server của
+        # Ollama nên phiên bản Ollama trên máy không liên quan — cảnh báo
+        # "quá cũ cho Gemma 4" khi dùng gemma4:31b-cloud là sai hoàn toàn.
+        if p["name"].startswith("gemma4") and not p["name"].endswith("-cloud"):
             self._warn_gemma4()
 
     @staticmethod
